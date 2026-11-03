@@ -1,5 +1,8 @@
 # dsh-root-temp-guard
 
+[![test](https://github.com/lizhijie429/dsh-root-temp-guard/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/lizhijie429/dsh-root-temp-guard/actions/workflows/test.yml)
+[![npm](https://img.shields.io/npm/v/dsh-root-temp-guard.svg)](https://www.npmjs.com/package/dsh-root-temp-guard)
+
 DSH Host 插件：在工具调用层拦截"在工作区根目录创建临时目录 / 临时文件"，把"临时产物统一放临时目录"的项目约定从**文字规则**升级为**执行期拦截**。
 
 > ⚠️ **定位说明**：这是一个**卫生/约定守卫**，不是安全边界。文件类工具走两层判定（工具参数 + 已解析目标），命令类只做启发式文本匹配。不要依赖它防御恶意行为——真正的边界是 DSH 沙箱。
@@ -107,7 +110,13 @@ tools/pre-execute → ctx.tools.guard() 单调守卫 → 执行工具
 
 ### 其他 profile
 
+npm 包名：**`dsh-root-temp-guard`**（当前尚未发布到 npm；发布后可直接按包名安装）。`package.json` 已带 `repository` / `homepage` / `bugs` 元数据，发布命令为 `npm publish`（需先 `npm login`）。
+
 ```powershell
+# npm 发布后：
+dsh plugin --profile web add dsh-root-temp-guard
+
+# 发布前（本地路径安装）：
 $dir = "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
 dsh plugin --profile web add "file:$dir"
 # 再在该 profile 的 cordis.patch.yml 中按上面的 insert 段挂载（id 相同即可）
