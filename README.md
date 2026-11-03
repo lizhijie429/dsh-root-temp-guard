@@ -3,6 +3,8 @@
 [![test](https://github.com/lizhijie429/dsh-root-temp-guard/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/lizhijie429/dsh-root-temp-guard/actions/workflows/test.yml)
 [![npm](https://img.shields.io/npm/v/dsh-root-temp-guard.svg)](https://www.npmjs.com/package/dsh-root-temp-guard)
 
+[English](README.en.md) | 简体中文
+
 DSH Host 插件：在工具调用层拦截"在工作区根目录创建临时目录 / 临时文件"，把"临时产物统一放临时目录"的项目约定从**文字规则**升级为**执行期拦截**。
 
 > ⚠️ **定位说明**：这是一个**卫生/约定守卫**，不是安全边界。文件类工具走两层判定（工具参数 + 已解析目标），命令类只做启发式文本匹配。不要依赖它防御恶意行为——真正的边界是 DSH 沙箱。
@@ -150,7 +152,7 @@ dsh headless --patch <含 root-temp-guard insert 的 yaml> "hello"
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 48 个用例，含真实文件系统 quarantine 套件
+node --test "test/*.test.mjs"   # 49 个用例，含真实文件系统 quarantine 套件
 npm pack --dry-run              # 校验 npm 包内容（含 cordis.patch.yml）
 Get-Content state\root-temp-guard.log
 ```

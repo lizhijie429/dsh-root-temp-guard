@@ -20,6 +20,7 @@ const TEXT_FILES = [
   'docs/index.json',
   'scripts/update-market-index.mjs',
   'README.md',
+  'README.en.md',
   'LICENSE',
   '.gitattributes',
   '.gitignore',
@@ -76,4 +77,13 @@ test('docs/index.json is a valid format-1 market index for this package', () => 
   assert.equal(plugin.versions[0].engines.dsh, pkg.engines.dsh)
   assert.equal(plugin.icon, 'icons/root-temp-guard.png')
   assert.equal(readFileSync(`${ROOT}/docs/${plugin.icon}`).length > 0, true)
+})
+
+test('bilingual READMEs exist and link to each other', () => {
+  const zh = readFileSync(`${ROOT}/README.md`, 'utf8')
+  const en = readFileSync(`${ROOT}/README.en.md`, 'utf8')
+  assert.match(zh, /\(README\.en\.md\)/, 'README.md must link to the English README')
+  assert.match(en, /\(README\.md\)/, 'README.en.md must link to the Chinese README')
+  assert.equal(en.split('\n').length > 100, true, 'English README must be a full translation')
+  assert.equal(zh.split('\n').length > 100, true, 'Chinese README must stay complete')
 })

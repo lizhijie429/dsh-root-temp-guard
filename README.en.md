@@ -1,0 +1,205 @@
+# dsh-root-temp-guard
+
+[![test](https://github.com/lizhijie429/dsh-root-temp-guard/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/lizhijie429/dsh-root-temp-guard/actions/workflows/test.yml)
+[![npm](https://img.shields.io/npm/v/dsh-root-temp-guard.svg)](https://www.npmjs.com/package/dsh-root-temp-guard)
+
+[English](README.en.md) | [简体中文](README.md)
+
+A DSH host plugin that intercepts tool calls creating temporary directories/files in the workspace root, turning "keep temporary artifacts under one temp directory" from a **written convention** into an **enforced check**.
+
+> ⚠️ **Scope**: this is a **hygiene/convention guard**, not a security boundary. File tools are checked in two layers (tool arguments + resolved target); shell commands are matched heuristically. Do not rely on it against malicious behaviour — the real boundary is the DSH sandbox.
+
+## Three enforcement layers
+
+1. **Tool-argument layer**: `ctx.tools.guard()` runs before a tool executes and evaluates the arguments together with the session's **current working directory** (`workingDirectory.get(session)`). If the model runs `working_directory { cd: "tmp" }` and then writes `../_tmp_x`, the path is resolved against the real cwd and still denied.
+2. **Resolved-target layer**: listens to DSH's `fs/write-intent` / `fs/edit-intent` waterfalls (emitted by `write`, `edit` and `str_replace_editor`) and decides after DSH resolved the path but before the write happens. This layer has the **realpath identity**, so a junction/symlink such as `tmp/link` cannot hide a root-level temp entry under the allowed `tmp/`.
+3. **Turn-end sweep**: listens to `session/event` (`turn/start` / `turn/end`) and **moves** (never deletes) root entries that are new in this turn and look like temp artifacts into `tmp/_quarantine/<timestamp>-<name>`, where they can be recovered manually. This is the backstop for shell bypasses: even if a shell command slips past the heuristic, the root does not keep a temp entry after the turn. Entries that existed before `turn/start` are never touched.
+
+All three layers are fail-open: internal errors allow the call and are logged, so they never wedge the tool pipeline.
+
+## Generality
+
+- **Workspace root** comes from the current session (`ctx.sandboxPolicy.resolve({session}).workspaceRoot`) and adapts to any project; only an explicit `workspaceRoot` pins it.
+- **Relative-path base** is the session's current working directory, matching DSH's own file tools.
+- **Temp directory name** is configurable (`tmpDirName`, default `tmp`); extra allowed names go in `allowRootNames`.
+- **Deny rules, extensions, denial text, mode, extra tools and log location** are all configurable.
+- Invalid configuration is reported as `config.warning` log lines instead of silently disabling rules.
+
+## How it works
+
+DSH tool pipeline:
+
+```text
+tools/pre-execute → ctx.tools.guard() monotonic guard → tool body
+   write/edit/str_replace_editor: fs.resolve → fs/write-intent | fs/edit-intent waterfall → ctx.fs write
+```
+
+- The tool guard is registered through `ctx.effect()`, so it unregisters on plugin unmount/hot reload.
+- Waterfall listeners are registered with `ctx.on(..., { prepend: true })`; a denial throws and short-circuits the remaining listeners.
+- Applies to every agent; nested subagent / workflow / PTC `run_code` tool calls share the same registry (**no end-to-end integration test yet**, see "Known limitations").
+
+## Default deny rules
+
+| Category | Examples | Result |
+| --- | --- | --- |
+| Root-level temp directory (including paths below it) | `_tmp_probe/x.txt`, `tmp_lead/log.txt`, `.tmp/`, `.._tmp/`, `scratch/`, `test-out/` | denied |
+| Root-level temp file | `_tmp_notes.md`, `build.log`, `x.tmp`, `x.bak`, `.log` | denied |
+| Configured unified temp dir | `tmp/20261103-dialog-design/a.txt` (`tmpDirName: tmp`) | allowed |
+| Normal repository paths | `AGENTS.md`, `docs/01-x.md`, `backend/pom.xml` | allowed |
+| Paths outside the workspace | `../other/...`, another drive | left alone (sandbox policy applies) |
+
+Covered tools:
+
+- File tools: `write`, `edit`, `str_replace_editor` (the read-only `view` command is allowed) — tool-argument layer + fs-intent layer.
+- Shell tools: `pwsh`, `bash`, `terminal_send` (`command` / `text`; `workdir` is resolved against the current cwd, and relative names after `cd`/`Set-Location` use the new directory).
+
+Shell heuristic: when the command contains a creation verb (`New-Item`/`mkdir`/`touch`/`Set-Content`/`Add-Content`/`Out-File`/`Copy-Item`/`Move-Item`/`xcopy`/`cp`/`mv`/`tee`/`ln`/`>` redirection) and one of its **path operands** resolves to a root-level temp name, the call is denied. Free-text arguments such as `-Value`/`-Content` are skipped to avoid false positives like `Set-Content -Value "console.log"`.
+
+Default denial text (overridable with `reasonTemplate`):
+
+```text
+Refusing to create temporary entry "_tmp_probe" in the repository root. Write temporary artifacts under
+tmp/<task-name>/ instead (see the project convention file, e.g. AGENTS.md).
+```
+
+## Configuration
+
+The `config:` block is entirely optional:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Master switch (`false` disables the plugin) |
+| `mode` | `deny` | `deny` rejects; `warn` only logs `would-deny` and allows (staged rollout) |
+| `tmpDirName` | `tmp` | Unified temp directory name; must be a single path segment, invalid values fall back to `tmp` |
+| `allowRootNames` | `[]` | Extra allowed root-level names (appended on top of the defaults) |
+| `denyNamePatterns` | `^(?:\.*_?tmp\|\.*temp\|\.*scratch\|\.*test[-_]?out)(?=$|[._-]\|\d)` | Root-level temp-name regex; **replaces the defaults**; `[]` keeps the defaults |
+| `denyFileExtensions` | `['.log','.tmp','.bak','.orig','.rej']` | Root-level temp-file extensions; `[]` disables the extension rule |
+| `extraWriteTools` | `[]` | Extra "file-path" tool names (added to `write`/`edit`/`str_replace_editor`) |
+| `extraShellTools` | `[]` | Extra "shell" tool names (added to `pwsh`/`bash`/`terminal_send`) |
+| `quarantine` | `strict` | `strict` = sweep new root-level temp entries at turn end; `off` = disable the sweep |
+| `quarantineDirName` | `_quarantine` | Sweep target directory (under `tmpDirName`); entries are moved, not deleted |
+| `reasonTemplate` | see above | Denial text; supports `{name}` and `{tmpDir}` |
+| `workspaceRoot` | empty | **When non-empty it wins over session resolution** (fixed root / multi-workspace deployments); absolute path recommended |
+| `logFile` | `<plugin dir>/state/root-temp-guard.log` | Install/deny/config-warning log; rotated once to `.1` when it exceeds 5 MB at mount |
+
+Example — use `scratchpad` as the temp directory and observe in `warn` mode first:
+
+```yaml
+- insert:
+    - id: root-temp-guard
+      name: 'C:\Users\<you>\.dsh\plugins\dsh-root-temp-guard\index.mjs'
+      config:
+        mode: warn
+        tmpDirName: scratchpad
+        reasonTemplate: 'Write temporary artifacts under {tmpDir}/<task-name>/ instead: {name}'
+```
+
+## Install
+
+The plugin is a DSH **profile bundle**: `package.json` declares `dsh.bundle.patch` → `cordis.patch.yml`, so installing it makes DSH insert the `root-temp-guard` row automatically (defaults: `tmpDirName: tmp`, `quarantine: strict`). No manual patch edit required.
+
+### Option 1 — CLI install (CLI-managed profiles such as web/headless; recommended)
+
+After the npm release:
+
+```powershell
+dsh plugin --profile web add dsh-root-temp-guard
+```
+
+Before the npm release (local directory; the plugin has no build step):
+
+```powershell
+dsh plugin --profile web add "file:$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
+```
+
+`dsh plugin add` installs the dependency and adds the package to the profile's `dsh.profile.bundles`; the bundled `cordis.patch.yml` is then loaded. Verify:
+
+```powershell
+dsh --profile web --dump-config | Select-String -Context 0,6 'dsh-root-temp-guard'
+```
+
+(Verified locally: after a `file:` install the dump contains `- id: root-temp-guard`, `tmpDirName: tmp`, `quarantine: strict`.)
+
+Override defaults from the profile's own `cordis.patch.yml` by id (this replaces that row's whole `config`):
+
+```yaml
+- id: root-temp-guard
+  config:
+    tmpDirName: scratchpad
+```
+
+### Option 2 — Desktop profile (Electron-managed)
+
+The desktop profile is owned by the Electron app; `dsh plugin` does not manage it. Insert the plugin by absolute path in `%USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml`:
+
+```yaml
+- insert:
+    - id: root-temp-guard
+      name: 'C:\Users\<you>\.dsh\plugins\dsh-root-temp-guard\index.mjs'
+      config:
+        tmpDirName: tmp
+```
+
+Replace `<you>` with your user name. The desktop profile's `patchReload` defaults to `live`: **config-only changes remount live; code changes to `index.mjs`/`lib/guard.mjs` are affected by Node's ESM module cache and need a DeepSeek Harness restart.**
+
+### Option 3 — Temporary check without touching any profile
+
+```powershell
+dsh headless --patch <yaml containing the root-temp-guard insert> "hello"
+```
+
+## Verify
+
+```powershell
+cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
+node --test "test/*.test.mjs"   # 49 cases, including a real-filesystem quarantine suite
+npm pack --dry-run              # validate npm package contents (includes cordis.patch.yml)
+Get-Content state\root-temp-guard.log
+```
+
+Example log:
+
+```text
+2026-11-03T... plugin.mounted pid=... mode=deny quarantine=strict
+2026-11-03T... deny source=tool tool=pwsh reason=...
+2026-11-03T... deny source=fs tool=write target=...\tmp\link\_tmp_x\a.txt reason=...
+2026-11-03T... quarantine.moved name=_tmp_sneaky -> ...\tmp\_quarantine\2026-11-03T...-_tmp_sneaky
+2026-11-03T... quarantine.done moved=1 dir=...\tmp\_quarantine
+2026-11-03T... plugin.disposed
+```
+
+## Plugin market and community listings
+
+Besides `dsh plugin add`, this repository publishes a **DSH plugin-market index (format 1)** on GitHub Pages:
+
+- Index URL: <https://lizhijie429.github.io/dsh-root-temp-guard/index.json>
+- Subscribe in DSH: **Plugins → Experimental plugins → enable "Custom plugin market" → "Discover" → "Add index source"**, then paste the URL
+- Regenerate: `npm run market:index` (pins the current `HEAD` commit and timestamp, and copies the icon into `docs/icons/`); committing `docs/` refreshes Pages automatically
+- The index is validated with the official `@deepseek-ai/dsh-plugin-market-index` (`parseMarketIndex` + `marketInstallTarget`)
+
+Community directories:
+
+- **awesome-dsh-plugin**: PR adding `data/plugins/lizhijie429__dsh-root-temp-guard.yml` ([#11726](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11726)). The list requires repositories to be at least one day old; until then CI is red and re-runs itself to green once the age threshold is met — no need to reopen the PR.
+- **deepseekplugin.org**: paste this repository's URL at <https://deepseekplugin.org/submit> (no account; listed immediately after automatic parsing). The repository already carries the `dsh-plugin` topic required for recognition.
+- **npm**: once published, `dsh plugin --profile web add dsh-root-temp-guard` works directly.
+
+## Known limitations
+
+- **Not a security boundary**: shell checks are heuristic text matching; `node -e "fs.mkdirSync(...)"`, `xcopy`/`robocopy`, shell variables/functions/aliases, PowerShell pipeline composition and scripts that create directories indirectly can bypass it.
+- **Shell checks only track simple `cd`/`Set-Location`**: `pushd` stacks and variable expansion (`$DIR`, `%TEMP%`, `~`) fall back to the workspace-root base (deny-biased, may cause false positives); `cd` inside pipeline subcommands is not tracked.
+- **Symlinks / junctions**: file-tool writes go through the fs-intent layer and are judged by realpath identity, so a root temp entry hidden behind `tmp/link` is denied; **shell text** is still matched literally and cannot see junctions. Plain UNC paths (`\\server\share`) are treated as outside the workspace and left alone.
+- **The fs-intent layer only covers writes through `write`/`edit`/`str_replace_editor`**: other plugins calling the `ctx.fs` service directly (no intent event) are not covered.
+- **Only known tools/pipelines are covered**: new tools can be added via `extraWriteTools`/`extraShellTools`.
+- **Agentless calls are not checked**: without a session there is no workspace context, so the guard allows the call (fail-open).
+- **Subagent / workflow / PTC coverage is not end-to-end tested**: they share the same registry in principle, but there is no integration test yet; do not treat it as a guarantee.
+- **The sweep only handles entries new in the turn**: temp directories that already existed before `turn/start` are untouched; when the baseline read fails the whole turn is skipped; entries are moved (recoverable under `tmp/_quarantine/`), at most 50 per turn; in `mode: warn` only `would-move` is logged. The sweep runs at `turn/end`: if a background process still writes into the directory, the rename can fail and is logged as `quarantine.move-failed`.
+- **Logging**: rotated once at mount (>5 MB → `.1`), not rotated while running; write failures are swallowed.
+- **Fail-open**: internal errors allow the call and are logged as `guard.error` / `fs-intent.error`.
+
+## Uninstall
+
+Remove the corresponding `insert` entry from `cordis.patch.yml`, or set `config.enabled` to `false` and restart.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
