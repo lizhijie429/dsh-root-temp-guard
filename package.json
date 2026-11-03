@@ -1,0 +1,31 @@
+﻿{
+  "name": "dsh-root-temp-guard",
+  "version": "0.3.0",
+  "description": "DSH Host plugin: block tool calls that create temporary directories/files in the workspace root. Workspace root follows the session; temp dir name, deny patterns and denial text are configurable.",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "dsh": ">=0.2.1-0 <0.3.0"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "guard",
+    "temporary-files"
+  ],
+  "license": "MIT"
+}
