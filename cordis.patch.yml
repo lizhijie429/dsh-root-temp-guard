@@ -1,0 +1,18 @@
+# Bundle layer for `dsh-root-temp-guard`.
+#
+# A profile that lists this package in `dsh.profile.bundles` (or installs it
+# through the plugin manager) receives exactly one inserted loader entry. Every
+# value below is the documented default: delete a key (or the whole `config:`
+# block) to keep the plugin default, or override the row from the profile's own
+# `cordis.patch.yml` by targeting `id: root-temp-guard`.
+#
+# Full option list: README.md → 配置.
+- insert:
+    - id: root-temp-guard
+      name: 'dsh-root-temp-guard'
+      config:
+        # Unified temp directory at the workspace root (also the allowed name).
+        tmpDirName: tmp
+        # 'strict' sweeps NEW root temp entries into <tmpDir>/_quarantine at
+        # turn end; 'off' disables the sweep.
+        quarantine: strict

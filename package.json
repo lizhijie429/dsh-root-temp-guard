@@ -1,6 +1,6 @@
 {
   "name": "dsh-root-temp-guard",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "DSH Host plugin: block tool calls that create temporary directories/files in the workspace root. Workspace root follows the session; temp dir name, deny patterns and denial text are configurable.",
   "type": "module",
   "main": "index.mjs",
@@ -11,6 +11,7 @@
   "files": [
     "index.mjs",
     "lib",
+    "cordis.patch.yml",
     "README.md",
     "LICENSE"
   ],
@@ -20,15 +21,24 @@
   "scripts": {
     "test": "node --test \"test/*.test.mjs\""
   },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "keywords": [
     "dsh",
     "dsh-plugin",
+    "dsh-bundle",
     "deepseek-harness",
     "guard",
     "temporary-files"
   ],
   "license": "MIT",
   "author": "lizhijie429",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lizhijie429/dsh-root-temp-guard.git"

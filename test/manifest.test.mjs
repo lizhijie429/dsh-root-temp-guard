@@ -13,6 +13,7 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
  */
 const TEXT_FILES = [
   'package.json',
+  'cordis.patch.yml',
   'index.mjs',
   'lib/guard.mjs',
   'lib/quarantine.mjs',
@@ -40,4 +41,23 @@ test('all repository text files are BOM-free', () => {
     const hasBom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
     assert.equal(hasBom, false, `${relative} starts with a UTF-8 BOM`)
   }
+})
+
+test('manifest declares the profile bundle patch DSH needs for installation', () => {
+  const pkg = JSON.parse(readFileSync(`${ROOT}/package.json`, 'utf8'))
+  assert.equal(pkg.dsh?.bundle?.patch, './cordis.patch.yml')
+  assert.equal(Array.isArray(pkg.files) && pkg.files.includes('cordis.patch.yml'), true)
+  assert.equal(pkg.publishConfig?.access, 'public')
+
+  const patch = readFileSync(`${ROOT}/cordis.patch.yml`, 'utf8')
+  assert.match(patch, /id:\s*root-temp-guard/)
+  assert.match(patch, /name:\s*'dsh-root-temp-guard'/)
+  assert.match(patch, /^-\s+insert:/m)
+})
+
+test('bundle patch declares a single insert row with plugin defaults', () => {
+  const patch = readFileSync(`${ROOT}/cordis.patch.yml`, 'utf8')
+  assert.equal((patch.match(/^\s*-\s+id:\s*root-temp-guard/gm) ?? []).length, 1)
+  assert.match(patch, /tmpDirName:\s*tmp/)
+  assert.match(patch, /quarantine:\s*strict/)
 })

@@ -19,3 +19,5 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Run unit tests
         run: node --test "test/*.test.mjs"
+      - name: Validate npm package contents
+        run: npm pack --dry-run

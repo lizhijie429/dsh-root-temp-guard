@@ -94,9 +94,41 @@ tools/pre-execute → ctx.tools.guard() 单调守卫 → 执行工具
 
 ## 安装
 
-### 桌面端（desktop profile）
+本插件是一个 DSH **profile 组合包（bundle）**：`package.json` 的 `dsh.bundle.patch` 指向 `cordis.patch.yml`，安装后 DSH 会自动插入 `root-temp-guard` 行（默认 `tmpDirName: tmp`、`quarantine: strict`），无需手工改 patch。
 
-在 `%USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml` 末尾追加：
+### 方式一：CLI 安装（web / headless 等 CLI 管理的 profile，推荐）
+
+npm 发布后：
+
+```powershell
+dsh plugin --profile web add dsh-root-temp-guard
+```
+
+发布前（本地目录安装；本插件无构建步骤）：
+
+```powershell
+dsh plugin --profile web add "file:$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
+```
+
+`dsh plugin add` 会安装依赖并把包加入 profile 的 `dsh.profile.bundles`，包自带的 `cordis.patch.yml` 随即被加载。验证：
+
+```powershell
+dsh --profile web --dump-config | Select-String -Context 0,6 'dsh-root-temp-guard'
+```
+
+（已实测：`file:` 安装后 dump 中出现 `- id: root-temp-guard`、`tmpDirName: tmp`、`quarantine: strict`。）
+
+覆盖默认配置：在 profile 自己的 `cordis.patch.yml` 里按 id 覆盖（会整体替换该行的 `config`）：
+
+```yaml
+- id: root-temp-guard
+  config:
+    tmpDirName: scratchpad
+```
+
+### 方式二：桌面端（desktop profile，Electron 管理）
+
+desktop profile 由 Electron 独占管理，`dsh plugin` 不直接管理它，仍需在 `%USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml` 末尾按绝对路径插入：
 
 ```yaml
 - insert:
@@ -108,25 +140,18 @@ tools/pre-execute → ctx.tools.guard() 单调守卫 → 执行工具
 
 `<你>` 替换为实际用户名。desktop profile 的 `patchReload` 默认 `live`：**纯 `config` 改动会重新挂载生效；`index.mjs`/`lib/guard.mjs` 的代码改动受 Node ESM 模块缓存影响，需要重启 DeepSeek Harness**。
 
-### 其他 profile
-
-npm 包名：**`dsh-root-temp-guard`**（当前尚未发布到 npm；发布后可直接按包名安装）。`package.json` 已带 `repository` / `homepage` / `bugs` 元数据，发布命令为 `npm publish`（需先 `npm login`）。
+### 方式三：临时验证（不改任何 profile）
 
 ```powershell
-# npm 发布后：
-dsh plugin --profile web add dsh-root-temp-guard
-
-# 发布前（本地路径安装）：
-$dir = "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-dsh plugin --profile web add "file:$dir"
-# 再在该 profile 的 cordis.patch.yml 中按上面的 insert 段挂载（id 相同即可）
+dsh headless --patch <含 root-temp-guard insert 的 yaml> "hello"
 ```
 
 ## 验证
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"
+node --test "test/*.test.mjs"   # 48 个用例，含真实文件系统 quarantine 套件
+npm pack --dry-run              # 校验 npm 包内容（含 cordis.patch.yml）
 Get-Content state\root-temp-guard.log
 ```
 
