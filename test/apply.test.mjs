@@ -7,12 +7,12 @@ import { apply } from '../index.mjs'
 const ROOT = process.platform === 'win32' ? 'D:\\work\\repo' : '/home/user/repo'
 
 /**
- * Capture the guard registered by apply() with a mocked context.
+ * Capture what apply() registers with a mocked context.
  * `options.get` overrides service lookup; `options.cwd` sets the current working
  * directory returned by the workingDirectory service.
  */
 function mount(options = {}) {
-  const captured = { guard: undefined, disposed: false }
+  const captured = { guard: undefined, disposed: false, listeners: {} }
   const ctx = {
     tools: {
       guard(guard) {
@@ -29,7 +29,9 @@ function mount(options = {}) {
         if (service === 'workingDirectory') return { get: () => options.cwd ?? ROOT }
         return undefined
       }),
-    on: () => {},
+    on(name, listener) {
+      ;(captured.listeners[name] ??= []).push(listener)
+    },
   }
   apply(ctx, { logFile: 'state/apply-test.log', ...(options.config ?? {}) })
   return captured
@@ -84,6 +86,48 @@ test('guard fails open when the evaluator throws', () => {
   assert.equal(guard(hostile), undefined)
 })
 
+test('fs-intent listeners are registered and veto resolved temp targets', () => {
+  const { listeners } = mount()
+  assert.equal(typeof listeners['fs/write-intent']?.[0], 'function')
+  assert.equal(typeof listeners['fs/edit-intent']?.[0], 'function')
+
+  let nextCalled = false
+  const next = () => {
+    nextCalled = true
+    return 'default-intent'
+  }
+  const actor = exec('write', {})
+  const bad = {
+    displayPath: path.join(ROOT, 'tmp', 'link', '_tmp_x', 'a.txt'),
+    targetKey: path.join(ROOT, '_tmp_x', 'a.txt'),
+  }
+  assert.throws(() => listeners['fs/write-intent'][0](bad, actor, next), /_tmp_x/)
+  assert.equal(nextCalled, false)
+
+  const good = {
+    displayPath: path.join(ROOT, 'tmp', '20261103-x', 'a.txt'),
+    targetKey: path.join(ROOT, 'tmp', '20261103-x', 'a.txt'),
+  }
+  assert.equal(listeners['fs/write-intent'][0](good, actor, next), 'default-intent')
+  assert.equal(nextCalled, true)
+})
+
+test('warn mode logs would-deny but allows both layers', () => {
+  let nextCalled = false
+  const { guard, listeners } = mount({ config: { mode: 'warn' } })
+  assert.equal(guard(exec('write', { file_path: '_tmp_x/a.txt' })), undefined)
+  const value = listeners['fs/write-intent'][0](
+    { displayPath: path.join(ROOT, '_tmp_x', 'a.txt'), targetKey: path.join(ROOT, '_tmp_x', 'a.txt') },
+    exec('write', {}),
+    () => {
+      nextCalled = true
+      return 'ok'
+    },
+  )
+  assert.equal(value, 'ok')
+  assert.equal(nextCalled, true)
+})
+
 test('lifecycle: registers through ctx.effect and disposes the guard with the plugin', () => {
   const events = []
   let fiberDisposer
@@ -97,6 +141,7 @@ test('lifecycle: registers through ctx.effect and disposes the guard with the pl
       },
     },
     get: () => undefined,
+    on: () => {},
     effect(execute) {
       events.push('effect')
       fiberDisposer = execute()

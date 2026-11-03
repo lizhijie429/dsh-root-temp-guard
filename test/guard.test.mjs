@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { evaluate, normalizeConfig } from '../lib/guard.mjs'
+import { evaluate, evaluateTarget, normalizeConfig } from '../lib/guard.mjs'
 
 const PLUGIN_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 const IS_WIN = process.platform === 'win32'
@@ -175,3 +175,63 @@ test('unrelated tools and malformed arguments are ignored', () => {
   assert.equal(check('write', { content: 'no path' }), undefined)
   assert.equal(check('pwsh', {}), undefined)
 })
+
+test('fs-intent: canonical target catches a junction under the allowed temp dir', () => {
+  const target = {
+    // Lexically inside tmp/ (legal), but its realpath identity is the root temp dir.
+    displayPath: inRepo('tmp', 'link', '_tmp_x', 'a.txt'),
+    targetKey: inRepo('_tmp_x', 'a.txt'),
+  }
+  const reason = evaluateTarget(target, config, { root: ROOT, canonicalRoot: ROOT, platform: process.platform })
+  assert.match(reason, /_tmp_x/)
+})
+
+test('fs-intent: a normal tmp/ target and outside targets stay legal', () => {
+  const inside = {
+    displayPath: inRepo('tmp', '20261103-x', 'a.txt'),
+    targetKey: inRepo('tmp', '20261103-x', 'a.txt'),
+  }
+  assert.equal(
+    evaluateTarget(inside, config, { root: ROOT, canonicalRoot: ROOT, platform: process.platform }),
+    undefined,
+  )
+  const outside = {
+    displayPath: path.join(OTHER_ROOT, '_tmp_x', 'a.txt'),
+    targetKey: path.join(OTHER_ROOT, '_tmp_x', 'a.txt'),
+  }
+  assert.equal(
+    evaluateTarget(outside, config, { root: ROOT, canonicalRoot: ROOT, platform: process.platform }),
+    undefined,
+  )
+})
+
+test('fs-intent: displayPath is checked when targetKey is missing', () => {
+  const target = { displayPath: inRepo('_tmp_y', 'a.txt') }
+  assert.match(
+    evaluateTarget(target, config, { root: ROOT, canonicalRoot: ROOT, platform: process.platform }),
+    /_tmp_y/,
+  )
+})
+
+test('shell: cd / Set-Location re-bases the following relative tokens', () => {
+  // Inside tmp/ → legal (previously a false positive).
+  assert.equal(check('pwsh', { command: 'Set-Location tmp/20261103-x; mkdir _tmp_y' }), undefined)
+  assert.equal(check('bash', { command: 'cd tmp/20261103-x && mkdir sub' }), undefined)
+  // Leaving a normal dir and going back to the root temp name → denied.
+  assert.match(check('pwsh', { command: 'Set-Location docs; mkdir ../_tmp_z' }), /_tmp_z/)
+  assert.match(check('bash', { command: 'cd docs && mkdir ../_tmp_w' }), /_tmp_w/)
+  // Unknown expansion: stay deny-biased instead of pretending the base is known.
+  assert.match(check('bash', { command: 'cd $UNKNOWN && mkdir _tmp_q' }), /_tmp_q/)
+})
+
+test('extraWriteTools / extraShellTools extend the covered tool set', () => {
+  const cfg = normalizeConfig({ extraWriteTools: ['save_file'], extraShellTools: ['run_cmd'] }, PLUGIN_DIR)
+  assert.match(check('save_file', { path: '_tmp_x/a.txt' }, ROOT, cfg), /_tmp_x/)
+  assert.match(check('run_cmd', { command: 'mkdir _tmp_y' }, ROOT, cfg), /_tmp_y/)
+})
+
+test('very long names are still classified without unbounded regex cost', () => {
+  const longName = '_tmp_' + 'a'.repeat(4096)
+  assert.match(check('write', { file_path: `${longName}/x.txt` }), /_tmp_/)
+})
+

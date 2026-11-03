@@ -2,31 +2,33 @@
  * dsh-root-temp-guard — a DSH Host plugin that hard-blocks tool calls creating
  * temporary directories/files directly in the workspace root.
  *
- * The guard is project-agnostic:
- *   - `root` is the workspace boundary from the session (`sandboxPolicy`),
- *     unless the deployment pins it with `config.workspaceRoot`;
- *   - `cwd` is the session's CURRENT working directory
- *     (`workingDirectory.get(session)`), matching how DSH's own file tools
- *     resolve relative paths after the model calls `working_directory`;
- *   - temp dir name, deny patterns, denied extensions and denial text are
- *     configuration (see `lib/guard.mjs` and README).
+ * Two enforcement layers, both config-driven and project-agnostic:
+ *   1. `ctx.tools.guard()` — before a tool runs, from the tool arguments and the
+ *      session's current working directory (`workingDirectory.get(session)`);
+ *   2. `fs/write-intent` / `fs/edit-intent` waterfalls — after DSH resolved the
+ *      target path (cwd applied, realpath identity known), so symlinks/junctions
+ *      under an allowed temp dir cannot hide a root-level temp entry.
+ *
+ * Root boundary comes from the session (`sandboxPolicy`), unless the deployment
+ * pins it with `config.workspaceRoot`; temp dir name, deny patterns, denied
+ * extensions, denial text, mode (deny/warn) and extra tools are configuration.
  *
  * Design notes:
  *   - fail-open: any internal error allows the call and writes a log line;
- *   - synchronous: guards run inline, so no filesystem I/O except on denial
- *     (and one size check when the log is opened at mount);
- *   - lifecycle: registered through `ctx.effect()` so unmounting the plugin
- *     unregisters the guard (older hosts: explicit disposal fallback);
+ *   - synchronous: guards run inline, so no filesystem I/O except on denial and
+ *     a one-time realpath of the workspace root (cached per root);
+ *   - lifecycle: tool guard registered through `ctx.effect()`; waterfall
+ *     listeners are fiber-scoped by `ctx.on()`;
  *   - scope: one global guard, so nested subagent/workflow/PTC tool calls are
  *     guarded too.
  *
  * @module dsh-root-temp-guard
  */
 
-import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
+import { appendFileSync, mkdirSync, realpathSync, renameSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { evaluate, normalizeConfig } from './lib/guard.mjs'
+import { evaluate, evaluateTarget, normalizeConfig } from './lib/guard.mjs'
 
 /** Cordis plugin name. */
 export const name = 'root-temp-guard'
@@ -46,11 +48,10 @@ const LOG_MAX_BYTES = 5 * 1024 * 1024
  */
 export function apply(ctx, rawConfig) {
   let log = () => {}
-  let warn = () => {}
   try {
     const config = normalizeConfig(rawConfig, PLUGIN_DIR)
     log = createLog(config.logFile)
-    warn = message => {
+    for (const message of config.warnings) {
       log(`config.warning ${message}`)
       try {
         ctx.logger?.warn?.(`[root-temp-guard] ${message}`)
@@ -58,7 +59,23 @@ export function apply(ctx, rawConfig) {
         /* host logger is optional */
       }
     }
-    for (const message of config.warnings) warn(message)
+
+    /** Canonical workspace roots, realpath-ed once per distinct root. */
+    const canonicalRoots = new Map()
+    const canonicalRootOf = root => {
+      if (typeof root !== 'string' || root.length === 0) return ''
+      const cached = canonicalRoots.get(root)
+      if (cached !== undefined) return cached
+      let value = root
+      try {
+        value = realpathSync.native(root)
+      } catch {
+        /* keep the lexical root */
+      }
+      if (canonicalRoots.size > 64) canonicalRoots.clear()
+      canonicalRoots.set(root, value)
+      return value
+    }
 
     /** Root boundary + current working directory for one call. */
     const resolveContext = exec => {
@@ -87,7 +104,10 @@ export function apply(ctx, rawConfig) {
       try {
         const { root, cwd } = resolveContext(exec)
         const reason = evaluate(exec, config, { root, cwd })
-        if (reason !== undefined) log(`deny tool=${forLog(exec?.name)} reason=${forLog(reason)}`)
+        if (reason !== undefined) {
+          log(`deny source=tool tool=${forLog(exec?.name)} reason=${forLog(reason)}`)
+          if (config.mode === 'warn') return undefined
+        }
         return reason
       } catch (error) {
         log(`guard.error ${forLog(error?.message ?? error)}`)
@@ -95,7 +115,7 @@ export function apply(ctx, rawConfig) {
       }
     }
 
-    /** Register the guard; the returned disposer is idempotent. */
+    /** Register the tool guard; the returned disposer is idempotent. */
     const register = () => {
       const off = ctx.tools.guard(guard)
       let disposed = false
@@ -119,7 +139,30 @@ export function apply(ctx, rawConfig) {
       const off = register()
       if (typeof ctx.on === 'function') ctx.on('dispose', off)
     }
-    log(`plugin.mounted pid=${process.pid}`)
+
+    // Second layer: resolved-target waterfalls, prepended so a denial vetoes the
+    // write before the observation-policy listener (which never calls next()).
+    const fsGuard = (target, actor, next) => {
+      let reason
+      try {
+        const { root, cwd } = resolveContext(actor)
+        reason = evaluateTarget(target, config, { root, cwd, canonicalRoot: canonicalRootOf(root) })
+      } catch (error) {
+        log(`fs-intent.error ${forLog(error?.message ?? error)}`)
+        return next()
+      }
+      if (reason !== undefined) {
+        log(`deny source=fs tool=${forLog(actor?.name)} target=${forLog(target?.displayPath)} reason=${forLog(reason)}`)
+        if (config.mode !== 'warn') throw new Error(reason)
+      }
+      return next()
+    }
+    if (typeof ctx.on === 'function') {
+      ctx.on('fs/write-intent', fsGuard, { prepend: true })
+      ctx.on('fs/edit-intent', fsGuard, { prepend: true })
+    }
+
+    log(`plugin.mounted pid=${process.pid} mode=${config.mode}`)
   } catch (error) {
     log(`plugin.error ${forLog(error?.message ?? error)}`)
   }
