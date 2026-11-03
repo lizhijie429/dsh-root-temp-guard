@@ -177,8 +177,8 @@ Get-Content state\root-temp-guard.log
 
 社区目录：
 
-- **awesome-dsh-plugin**：提交 `data/plugins/lizhijie429__dsh-root-temp-guard.yml` 的 PR（仓库需带 `dsh-plugin` topic 且创建满 1 天；CI 会在达到年龄后自动转绿）
-- **deepseekplugin.org**：在 <https://deepseekplugin.org/submit> 粘贴本仓库 URL，自动识别 `dsh-plugin` topic 后即时收录
+- **awesome-dsh-plugin**：提交 `data/plugins/lizhijie429__dsh-root-temp-guard.yml` 的 PR（[#11726](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11726)）。该列表要求仓库创建满 1 天，未满时 CI 会先标红，达到年龄后自动 re-run 转绿，无需重开 PR
+- **deepseekplugin.org**：在 <https://deepseekplugin.org/submit> 粘贴本仓库 URL 即可（无账号、自动解析后即时上架）；本仓库已加 `dsh-plugin` topic，满足其自动识别条件
 - **npm**：发布后可直接 `dsh plugin --profile web add dsh-root-temp-guard`
 
 ## 已知限制
