@@ -166,6 +166,21 @@ Get-Content state\root-temp-guard.log
 2026-11-03T... plugin.disposed
 ```
 
+## 插件市场与社区收录
+
+除 `dsh plugin add` 安装外，本仓库还发布了一份 **DSH 插件市场索引（format 1）**，托管在 GitHub Pages：
+
+- 索引地址：<https://lizhijie429.github.io/dsh-root-temp-guard/index.json>
+- 在 DSH 中订阅：**插件 → 实验性插件 → 打开「自定义插件市场」→「发现」→「添加索引源」**，粘贴上面的地址
+- 生成/更新：`npm run market:index`（固定当前 `HEAD` 的 commit 与提交时间，并把图标复制到 `docs/icons/`）；提交 `docs/` 后 Pages 自动刷新
+- 索引已用官方校验器 `@deepseek-ai/dsh-plugin-market-index` 的 `parseMarketIndex` + `marketInstallTarget` 校验通过
+
+社区目录：
+
+- **awesome-dsh-plugin**：提交 `data/plugins/lizhijie429__dsh-root-temp-guard.yml` 的 PR（仓库需带 `dsh-plugin` topic 且创建满 1 天；CI 会在达到年龄后自动转绿）
+- **deepseekplugin.org**：在 <https://deepseekplugin.org/submit> 粘贴本仓库 URL，自动识别 `dsh-plugin` topic 后即时收录
+- **npm**：发布后可直接 `dsh plugin --profile web add dsh-root-temp-guard`
+
 ## 已知限制
 
 - **不是安全边界**：命令类是启发式文本匹配，`node -e "fs.mkdirSync(...)"`、`xcopy`/`robocopy`、shell 变量/函数/别名、PowerShell 管道拼接、脚本内部间接建目录均可绕过。

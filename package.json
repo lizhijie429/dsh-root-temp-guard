@@ -19,7 +19,8 @@
     "dsh": ">=0.2.1-0 <0.3.0"
   },
   "scripts": {
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test \"test/*.test.mjs\"",
+    "market:index": "node scripts/update-market-index.mjs"
   },
   "dsh": {
     "bundle": {

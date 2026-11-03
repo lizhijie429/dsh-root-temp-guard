@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "title": {
+    "en": "lizhijie429 DSH plugins",
+    "zh": "lizhijie429 的 DSH 插件"
+  },
+  "description": {
+    "en": "Bundles published by lizhijie429 for DeepSeek Harness.",
+    "zh": "lizhijie429 发布给 DeepSeek Harness 使用的组合包。"
+  },
+  "plugins": [
+    {
+      "name": "dsh-root-temp-guard",
+      "title": {
+        "en": "DSH Root Temp Guard",
+        "zh": "DSH 根目录临时文件守卫"
+      },
+      "description": {
+        "en": "Blocks tool calls that create temporary files or directories in the workspace root, and moves new root-level temp entries into tmp/_quarantine at turn end.",
+        "zh": "拦截在仓库根目录创建临时文件或目录的工具调用，并在回合结束时把新增的根目录临时项移入 tmp/_quarantine。"
+      },
+      "icon": "icons/root-temp-guard.png",
+      "author": "lizhijie429",
+      "homepage": "https://github.com/lizhijie429/dsh-root-temp-guard#readme",
+      "repository": {
+        "url": "https://github.com/lizhijie429/dsh-root-temp-guard"
+      },
+      "metadata": {
+        "keywords": [
+          "dsh",
+          "dsh-plugin",
+          "dsh-bundle",
+          "deepseek-harness",
+          "guard",
+          "temporary-files"
+        ]
+      },
+      "dist-tags": {
+        "latest": "0.6.0"
+      },
+      "versions": [
+        {
+          "version": "0.6.0",
+          "publishTimestamp": 1793690054,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/lizhijie429/dsh-root-temp-guard",
+            "commit": "9c429f7b46006c50e594ae16d4918db3a09a4a93"
+          },
+          "engines": {
+            "dsh": ">=0.2.1-0 <0.3.0"
+          }
+        }
+      ]
+    }
+  ]
+}

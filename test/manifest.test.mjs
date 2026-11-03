@@ -17,6 +17,8 @@ const TEXT_FILES = [
   'index.mjs',
   'lib/guard.mjs',
   'lib/quarantine.mjs',
+  'docs/index.json',
+  'scripts/update-market-index.mjs',
   'README.md',
   'LICENSE',
   '.gitattributes',
@@ -60,4 +62,18 @@ test('bundle patch declares a single insert row with plugin defaults', () => {
   assert.equal((patch.match(/^\s*-\s+id:\s*root-temp-guard/gm) ?? []).length, 1)
   assert.match(patch, /tmpDirName:\s*tmp/)
   assert.match(patch, /quarantine:\s*strict/)
+})
+
+test('docs/index.json is a valid format-1 market index for this package', () => {
+  const pkg = JSON.parse(readFileSync(`${ROOT}/package.json`, 'utf8'))
+  const index = JSON.parse(readFileSync(`${ROOT}/docs/index.json`, 'utf8'))
+  assert.equal(index.format, 1)
+  const plugin = index.plugins.find(entry => entry.name === pkg.name)
+  assert.ok(plugin, 'index must list this package')
+  assert.equal(plugin['dist-tags'].latest, pkg.version)
+  assert.equal(plugin.versions.length >= 1, true)
+  assert.match(plugin.versions[0].source.commit, /^[0-9a-f]{40}$/)
+  assert.equal(plugin.versions[0].engines.dsh, pkg.engines.dsh)
+  assert.equal(plugin.icon, 'icons/root-temp-guard.png')
+  assert.equal(readFileSync(`${ROOT}/docs/${plugin.icon}`).length > 0, true)
 })
