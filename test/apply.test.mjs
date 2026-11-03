@@ -128,9 +128,17 @@ test('warn mode logs would-deny but allows both layers', () => {
   assert.equal(nextCalled, true)
 })
 
+test('quarantine watcher subscribes to session/event by default and can be opted out', () => {
+  const { listeners } = mount()
+  assert.equal(typeof listeners['session/event']?.[0], 'function')
+
+  const off = mount({ config: { quarantine: 'off' } })
+  assert.equal(off.listeners['session/event'], undefined)
+})
+
 test('lifecycle: registers through ctx.effect and disposes the guard with the plugin', () => {
   const events = []
-  let fiberDisposer
+  const fiberDisposers = []
   const ctx = {
     tools: {
       guard() {
@@ -144,14 +152,15 @@ test('lifecycle: registers through ctx.effect and disposes the guard with the pl
     on: () => {},
     effect(execute) {
       events.push('effect')
-      fiberDisposer = execute()
+      fiberDisposers.push(execute())
       return () => {}
     },
   }
   apply(ctx, { logFile: 'state/apply-test.log' })
-  assert.deepEqual(events, ['effect', 'guard'])
-  assert.equal(typeof fiberDisposer, 'function')
-  fiberDisposer()
-  fiberDisposer() // idempotent: the disposer must not run twice
-  assert.deepEqual(events, ['effect', 'guard', 'unregistered'])
+  assert.deepEqual(events.slice(0, 2), ['effect', 'guard'])
+  for (const dispose of fiberDisposers) {
+    if (typeof dispose === 'function') dispose()
+    if (typeof dispose === 'function') dispose() // idempotent: must not run twice
+  }
+  assert.equal(events.filter(name => name === 'unregistered').length, 1)
 })

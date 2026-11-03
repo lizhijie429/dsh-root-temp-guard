@@ -29,6 +29,7 @@ import { appendFileSync, mkdirSync, realpathSync, renameSync, statSync } from 'n
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { evaluate, evaluateTarget, normalizeConfig } from './lib/guard.mjs'
+import { createQuarantineWatcher } from './lib/quarantine.mjs'
 
 /** Cordis plugin name. */
 export const name = 'root-temp-guard'
@@ -162,7 +163,25 @@ export function apply(ctx, rawConfig) {
       ctx.on('fs/edit-intent', fsGuard, { prepend: true })
     }
 
-    log(`plugin.mounted pid=${process.pid} mode=${config.mode}`)
+    // Third layer: turn-end sweep. Anything a shell command bypassed past the
+    // heuristic still shows up as a NEW root entry; move it into
+    // <tmpDir>/<quarantineDirName>/ (moved, never deleted) at turn end.
+    if (config.quarantine === 'strict' && typeof ctx.on === 'function') {
+      const quarantine = createQuarantineWatcher({
+        config,
+        mode: config.mode,
+        log,
+        resolveRoot: session => resolveContext({ agent: { session } }).root,
+      })
+      ctx.on('session/event', (session, event) => {
+        quarantine.onSessionEvent(session, event)
+      })
+      if (typeof ctx.effect === 'function') {
+        ctx.effect(() => () => quarantine.dispose(), 'root-temp-guard quarantine teardown')
+      }
+    }
+
+    log(`plugin.mounted pid=${process.pid} mode=${config.mode} quarantine=${config.quarantine}`)
   } catch (error) {
     log(`plugin.error ${forLog(error?.message ?? error)}`)
   }

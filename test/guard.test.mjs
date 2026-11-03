@@ -162,6 +162,14 @@ test('config warnings are reported instead of silently disabling rules', () => {
   assert.equal(cfg.warnings.length >= 3, true)
 })
 
+test('quarantine config is validated and defaults to strict', () => {
+  const cfg = normalizeConfig({ quarantine: 'yes' }, PLUGIN_DIR)
+  assert.equal(cfg.quarantine, 'strict')
+  assert.equal(cfg.warnings.some(warning => warning.includes('quarantine')), true)
+  assert.equal(normalizeConfig({}, PLUGIN_DIR).quarantine, 'strict')
+  assert.equal(normalizeConfig({ quarantine: 'off' }, PLUGIN_DIR).quarantine, 'off')
+})
+
 test('guard is disabled by config and inert without a root', () => {
   const off = normalizeConfig({ enabled: false }, PLUGIN_DIR)
   assert.equal(evaluate(exec('write', { file_path: '_tmp_x/a.txt' }), off, { root: ROOT, cwd: ROOT }), undefined)

@@ -4,12 +4,13 @@ DSH Host 插件：在工具调用层拦截"在工作区根目录创建临时目�
 
 > ⚠️ **定位说明**：这是一个**卫生/约定守卫**，不是安全边界。文件类工具走两层判定（工具参数 + 已解析目标），命令类只做启发式文本匹配。不要依赖它防御恶意行为——真正的边界是 DSH 沙箱。
 
-## 双层拦截
+## 三层拦截
 
 1. **工具参数层**：`ctx.tools.guard()` 在工具执行前运行，用工具参数 + 会话**当前工作目录**（`workingDirectory.get(session)`）判定。模型执行 `working_directory { cd: "tmp" }` 后再写 `../_tmp_x`，也会按真实 cwd 解析并拦截。
 2. **已解析目标层**：监听 DSH 的 `fs/write-intent` / `fs/edit-intent` waterfall（`write` / `edit` / `str_replace_editor` 都会触发），在 DSH 完成路径解析后、真正写盘前判定。这一层拿到 **realpath 身份**，因此 `tmp/link` 这类 junction/symlink 也无法把根目录临时项藏进允许的 `tmp/` 里。
+3. **回合结束清扫**：监听 `session/event` 的 `turn/start` / `turn/end`，把"本轮新出现、且名字像临时项"的根目录条目**移动**（不删除）到 `tmp/_quarantine/<timestamp>-<name>`，可人工恢复。这是对命令类绕过的兜底：即使某条 shell 命令绕过了启发式，回合结束后根目录也不会留下临时项。turn/start 之前已存在的条目不会被动。
 
-两层都 fail-open：插件内部异常一律放行并写日志，不会卡死工具调用。
+三层都 fail-open：插件内部异常一律放行并写日志，不会卡死工具调用。
 
 ## 通用性
 
@@ -70,6 +71,8 @@ tools/pre-execute → ctx.tools.guard() 单调守卫 → 执行工具
 | `denyFileExtensions` | `['.log','.tmp','.bak','.orig','.rej']` | 根目录临时文件扩展名；`[]` 表示关闭扩展名规则 |
 | `extraWriteTools` | `[]` | 额外的"文件路径类"工具名（追加到 `write`/`edit`/`str_replace_editor`） |
 | `extraShellTools` | `[]` | 额外的"命令类"工具名（追加到 `pwsh`/`bash`/`terminal_send`） |
+| `quarantine` | `strict` | `strict` = 回合结束清扫本轮新增的根目录临时项；`off` = 关闭清扫 |
+| `quarantineDirName` | `_quarantine` | 清扫目标目录（位于 `tmpDirName` 下），移动而非删除 |
 | `reasonTemplate` | 见上 | 拒绝文案，支持 `{name}`、`{tmpDir}` |
 | `workspaceRoot` | 空 | **非空时优先于会话解析**（固定根/多工作区部署）；建议绝对路径 |
 | `logFile` | `<插件目录>/state/root-temp-guard.log` | 安装/拒绝/配置告警日志；挂载时超过 5MB 自动轮转一次为 `.1` |
@@ -124,6 +127,8 @@ Get-Content state\root-temp-guard.log
 2026-11-03T... plugin.mounted pid=... mode=deny
 2026-11-03T... deny source=tool tool=pwsh reason=禁止在仓库根目录创建临时项 "_tmp_probe"...
 2026-11-03T... deny source=fs tool=write target=...\tmp\link\_tmp_x\a.txt reason=...
+2026-11-03T... quarantine.moved name=_tmp_sneaky -> ...\tmp\_quarantine\2026-11-03T...-_tmp_sneaky
+2026-11-03T... quarantine.done moved=1 dir=...\tmp\_quarantine
 2026-11-03T... plugin.disposed
 ```
 
@@ -136,7 +141,7 @@ Get-Content state\root-temp-guard.log
 - **只覆盖已知工具与工具管线**：新工具可通过 `extraWriteTools`/`extraShellTools` 追加。
 - **agentless 调用不拦截**：没有 session 的调用拿不到工作区上下文，守卫直接放行（fail-open）。
 - **子代理 / workflow / PTC 覆盖未做端到端验证**：机制上走同一注册表，但未集成测试；不要把这条当保证。
-- **不做自动清理**：只拒绝新写入，已存在的临时目录不会搬走或删除。
+- **清扫只处理"本轮新增"**：turn/start 前已存在的临时目录不会被动；baseline 读取失败时整轮跳过；移动而非删除（`tmp/_quarantine/` 可恢复）；每轮最多移动 50 个；`mode: warn` 下只记 `would-move` 不移动。清扫发生在 turn/end：若某后台进程仍在写该目录，重命名可能失败并记录 `quarantine.move-failed`。
 - **日志**：挂载时轮转一次（>5MB → `.1`），运行期间不轮转；写失败被吞。
 - **fail-open**：内部异常放行并记录 `guard.error` / `fs-intent.error`。
 
