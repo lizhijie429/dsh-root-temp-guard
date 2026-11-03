@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "dsh-root-temp-guard",
   "version": "0.5.0",
   "description": "DSH Host plugin: block tool calls that create temporary directories/files in the workspace root. Workspace root follows the session; temp dir name, deny patterns and denial text are configurable.",
