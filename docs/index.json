@@ -16,8 +16,8 @@
         "zh": "DSH 根目录临时文件守卫"
       },
       "description": {
-        "en": "Blocks tool calls that create temporary files or directories in the workspace root, and moves new root-level temp entries into tmp/_quarantine at turn end.",
-        "zh": "拦截在仓库根目录创建临时文件或目录的工具调用，并在回合结束时把新增的根目录临时项移入 tmp/_quarantine。"
+        "en": "Blocks tool calls that create temporary files or directories in the workspace root, moves new root-level temp entries into tmp/_quarantine at turn end, and ships a graphical settings page with live saves.",
+        "zh": "拦截在仓库根目录创建临时文件或目录的工具调用，在回合结束时把新增的根目录临时项移入 tmp/_quarantine，并提供保存即生效的图形化设置页。"
       },
       "icon": "icons/root-temp-guard.png",
       "author": "lizhijie429",
@@ -32,7 +32,9 @@
           "dsh-bundle",
           "deepseek-harness",
           "guard",
-          "temporary-files"
+          "temporary-files",
+          "settings",
+          "configuration"
         ]
       },
       "dist-tags": {
@@ -41,11 +43,11 @@
       "versions": [
         {
           "version": "0.9.1",
-          "publishTimestamp": 1793967453,
+          "publishTimestamp": 1793969298,
           "source": {
             "type": "git",
             "url": "https://github.com/lizhijie429/dsh-root-temp-guard",
-            "commit": "be7876caec2a410effb219910088f8dce3c75131"
+            "commit": "cdfece6c80ce8be9d702ab227a3766106f4eab3d"
           },
           "engines": {
             "dsh": ">=0.2.1-0 <0.3.0"
