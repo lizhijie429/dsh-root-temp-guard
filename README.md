@@ -220,7 +220,7 @@ Get-Content state\root-temp-guard.log
 - **awesome-dsh-plugin**：条目 `data/plugins/lizhijie429__dsh-root-temp-guard.yml` 已收录（[PR #11726](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11726)，已合并）
 - **DSH Plugin Hub**：<https://dshpluginhub.ai/zh/plugins/dsh-root-temp-guard>（第三方目录，按 GitHub 仓库自动收录）
 - **DSH Hub**：<https://dsh-hub.cc/plugins/lizhijie429/dsh-root-temp-guard>（第三方目录，按仓库/README 自动同步）
-- **deepseekplugin.org**：可在 <https://deepseekplugin.org/submit> 粘贴仓库 URL 提交（目前尚未上架）
+- **deepseekplugin.org**：已自动收录到社区目录：<https://deepseekplugin.org/plugins/submitted?slug=lizhijie429-2f-dsh-2d-root-2d-temp-2d-guard>；提交入口 <https://deepseekplugin.org/submit>
 - **npm**：发布后可直接 `dsh plugin --profile web add dsh-root-temp-guard`
 
 ## 版本记录

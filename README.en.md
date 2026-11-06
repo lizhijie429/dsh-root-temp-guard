@@ -220,7 +220,7 @@ Example log:
 - **awesome-dsh-plugin**: listed as `data/plugins/lizhijie429__dsh-root-temp-guard.yml` ([PR #11726](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11726), merged)
 - **DSH Plugin Hub**: <https://dshpluginhub.ai/zh/plugins/dsh-root-temp-guard> (third-party directory, auto-listed from GitHub)
 - **DSH Hub**: <https://dsh-hub.cc/plugins/lizhijie429/dsh-root-temp-guard> (third-party directory, synced from the repo/README)
-- **deepseekplugin.org**: submit the repository URL at <https://deepseekplugin.org/submit> (not listed yet)
+- **deepseekplugin.org**: auto-listed in the community directory at <https://deepseekplugin.org/plugins/submitted?slug=lizhijie429-2f-dsh-2d-root-2d-temp-2d-guard>; submission form: <https://deepseekplugin.org/submit>
 - **npm**: once published, `dsh plugin --profile web add dsh-root-temp-guard` works directly.
 
 ## Changelog
