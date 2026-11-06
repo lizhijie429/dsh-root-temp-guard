@@ -157,11 +157,17 @@ dsh headless --patch <yaml containing the root-temp-guard insert> "hello"
 
 ## Graphical settings page
 
-Once installed as a profile bundle (`dsh plugin add`), the DSH Web client loads this package's browser half (`dsh.client`): open **Plugins → Installed → `dsh-root-temp-guard` → the `root-temp-guard` row → Configure** to get the graphical settings page. The desktop app's embedded Web UI works the same way.
+Once installed, the DSH Web client loads this package's browser half (`dsh.client`), with two entry points:
+
+- **Plugins → "Built-in plugin configuration" → the "Root temp guard" card**: provided by `plugins.item`; it does **not** require installing the package as a bundle, so a desktop profile inserted by absolute path gets it too;
+- **Plugins → Installed → `dsh-root-temp-guard` → the `root-temp-guard` row → Configure**: only for bundle installs; it opens the same form as the card.
+
+The desktop app's embedded Web UI works the same way.
 
 - The page covers every option: enabled switch, `deny`/`warn`, unified temp directory, sweep policy and target directory, extra allowed names, name regexes, extensions, extra file/shell tools, pinned root, log file and denial text;
 - Saving goes through the DSH settings service (`ctx.configForms`) into the profile's Cordis patch; the Host `Config` schema is root-`.volatile()`, so **saved values apply immediately without a restart or remount**;
 - Reset clears that field's profile override (back to the inherited/default value);
+- **Restart the host once after upgrading**: the browser half is loaded at startup, so the card/Configure entry above appears only after a restart;
 - headless / ACP profiles have no Web client, so they show no page; edit `cordis.patch.yml` as described below;
 - `vendor/` contains `@deepseek-ai/schemastery` and `@deepseek-ai/cosmokit` (MIT, see `vendor/README.md`), so a desktop profile inserted by absolute path with no `node_modules` still gets the schema without extra npm dependencies.
 

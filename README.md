@@ -157,11 +157,17 @@ dsh headless --patch <含 root-temp-guard insert 的 yaml> "hello"
 
 ## 图形化设置页
 
-安装为 profile 组合包（`dsh plugin add`）后，DSH Web 界面会加载本包的浏览器半侧（`dsh.client`），在 **插件页 → 已安装 → `dsh-root-temp-guard` → 行 `root-temp-guard` 的「配置」** 打开图形化设置页；桌面端内嵌的 Web UI 同样可用。
+安装后 DSH Web 界面会加载本包的浏览器半侧（`dsh.client`），有两个入口：
+
+- **插件页 → 「内置插件配置」→「根目录临时文件守卫」卡片**：卡片由 `plugins.item` 提供，**不要求把包安装为组合包**，按绝对路径手动插入的桌面 profile 也会出现；
+- **插件页 → 已安装 → `dsh-root-temp-guard` → 行 `root-temp-guard` 的「配置」**：仅以组合包安装时出现，和上面的卡片打开同一个表单。
+
+桌面端内嵌的 Web UI 同样可用。
 
 - 页面覆盖全部配置项：启用开关、`deny`/`warn`、统一临时目录、清扫策略与目标目录、额外放行名、名称正则、扩展名、额外文件/命令工具、固定根目录、日志与拒绝文案；
 - 保存通过 DSH 设置服务（`ctx.configForms`）写入 profile 的 Cordis patch；Host `Config` schema 根节点是 `.volatile()`，**保存后立即生效，无需重启或重挂载**；
 - 「恢复默认」会清除该字段的 profile 覆盖层（回到继承值/默认值）；
+- **升级后需要重启一次宿主**：浏览器半侧在启动时加载，重启后才会出现上面的卡片/配置入口；
 - headless / ACP 等没有 Web 客户端的 profile 不显示设置页，仍按下文的 `cordis.patch.yml` 编辑；
 - `vendor/` 内置了 `@deepseek-ai/schemastery` 与 `@deepseek-ai/cosmokit`（MIT，见 `vendor/README.md`），因此按绝对路径插入、没有 `node_modules` 的桌面 profile 也能提供 schema，无需额外 npm 依赖。
 

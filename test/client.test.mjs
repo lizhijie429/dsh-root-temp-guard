@@ -44,7 +44,7 @@ function loadClientModule() {
   return { exports, required, react }
 }
 
-test('client bundle registers the row config page under <package>#<row>', () => {
+test('client bundle registers both the built-in settings card and the row page', () => {
   const { exports } = loadClientModule()
   assert.equal(typeof exports.apply, 'function')
   assert.deepEqual(exports.inject, ['slots', 'locale', 'configForms'])
@@ -81,10 +81,15 @@ test('client bundle registers the row config page under <package>#<row>', () => 
   }
   exports.apply(ctx)
 
-  assert.equal(registered.length, 1)
-  assert.equal(registered[0].options.name, 'plugins.row.config')
-  assert.equal(registered[0].options.key, 'dsh-root-temp-guard#root-temp-guard')
-  assert.equal(registered[0].options.locale, 'settings.root-temp-guard')
+  assert.equal(registered.length, 2)
+  const item = registered.find(entry => entry.options.name === 'plugins.item')
+  const row = registered.find(entry => entry.options.name === 'plugins.row.config')
+  assert.ok(item, 'plugins.item registration is required for absolute-path profiles')
+  assert.ok(row, 'plugins.row.config registration is required for installed bundles')
+  assert.equal(item.options.id, 'root-temp-guard')
+  assert.equal(row.options.key, 'dsh-root-temp-guard#root-temp-guard')
+  assert.equal(item.options.locale, 'settings.root-temp-guard')
+  assert.equal(row.options.locale, 'settings.root-temp-guard')
   assert.deepEqual(namespaces, [['root-temp-guard']])
   assert.equal(dictionaries.length, 1)
   assert.equal(typeof dictionaries[0].dict.zh.field_enabled, 'string')
