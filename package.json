@@ -1,16 +1,18 @@
 {
   "name": "dsh-root-temp-guard",
-  "version": "0.8.0",
-  "description": "DSH Host plugin: block tool calls that create temporary directories/files in the workspace root (including the 0.2.2 apply_patch tool). Workspace root follows the session; temp dir name, deny patterns and denial text are configurable.",
+  "version": "0.9.0",
+  "description": "DSH Host plugin: block tool calls that create temporary directories/files in the workspace root (including the 0.2.2 apply_patch tool), with a graphical settings page. Workspace root follows the session; temp dir name, deny patterns and denial text are configurable.",
   "type": "module",
   "main": "index.mjs",
   "exports": {
     ".": "./index.mjs",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
   "files": [
     "index.mjs",
     "lib",
+    "vendor",
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
@@ -26,6 +28,14 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ]
     }
   },
   "keywords": [

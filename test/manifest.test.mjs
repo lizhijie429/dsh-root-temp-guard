@@ -17,6 +17,9 @@ const TEXT_FILES = [
   'index.mjs',
   'lib/guard.mjs',
   'lib/quarantine.mjs',
+  'lib/config.mjs',
+  'lib/client.js',
+  'vendor/README.md',
   'docs/index.json',
   'scripts/update-market-index.mjs',
   'README.md',
@@ -27,6 +30,8 @@ const TEXT_FILES = [
   'test/guard.test.mjs',
   'test/apply.test.mjs',
   'test/quarantine.test.mjs',
+  'test/config.test.mjs',
+  'test/client.test.mjs',
   'test/manifest.test.mjs',
 ]
 
@@ -56,6 +61,17 @@ test('manifest declares the profile bundle patch DSH needs for installation', ()
   assert.match(patch, /id:\s*root-temp-guard/)
   assert.match(patch, /name:\s*'dsh-root-temp-guard'/)
   assert.match(patch, /^-\s+insert:/m)
+})
+
+test('manifest declares the browser half for the graphical settings page', () => {
+  const pkg = JSON.parse(readFileSync(`${ROOT}/package.json`, 'utf8'))
+  assert.equal(pkg.dsh?.client?.platform, 'web')
+  assert.equal(pkg.exports?.['./client'], './lib/client.js')
+  assert.equal(pkg.files.includes('lib'), true)
+  assert.equal(pkg.files.includes('vendor'), true)
+  assert.equal(pkg.files.includes('lib/client.js'), false) // covered by "lib"
+  assert.equal(readFileSync(`${ROOT}/lib/client.js`, 'utf8').includes('__ModuleLoader__'), true)
+  assert.equal(readFileSync(`${ROOT}/lib/config.mjs`, 'utf8').includes('volatile()'), true)
 })
 
 test('bundle patch declares a single insert row with plugin defaults', () => {

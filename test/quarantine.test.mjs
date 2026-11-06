@@ -14,17 +14,26 @@ async function fixture(t) {
   return root
 }
 
-function makeWatcher(root, { mode = 'deny', config = {} } = {}) {
+function makeWatcher(root, { mode, config = {} } = {}) {
   const logs = []
-  const cfg = normalizeConfig({ logFile: path.join(root, 'state.log'), ...config }, path.join(root, 'plugin'))
+  const raw = { logFile: path.join(root, 'state.log'), ...(mode === undefined ? {} : { mode }), ...config }
+  const pluginDir = path.join(root, 'plugin')
+  let cfg = normalizeConfig(raw, pluginDir)
   const watcher = createQuarantineWatcher({
-    config: cfg,
-    mode,
+    getConfig: () => cfg,
     log: line => logs.push(line),
     resolveRoot: () => root,
   })
   const session = { id: 'session-test', header: { cwd: root } }
-  return { watcher, logs, session }
+  return {
+    watcher,
+    logs,
+    session,
+    setConfig(patch) {
+      Object.assign(raw, patch)
+      cfg = normalizeConfig(raw, pluginDir)
+    },
+  }
 }
 
 const event = type => ({ type })
@@ -135,6 +144,35 @@ test('quarantine: leftovers over the per-sweep cap are retried by the next sweep
 
   assert.equal((await readdir(root)).filter(name => name.startsWith('_tmp_n')).length, 0)
   assert.equal((await readdir(path.join(root, 'tmp', '_quarantine'))).length, 60)
+})
+
+test('quarantine: enabled=false skips tracking and sweeping', async t => {
+  const root = await fixture(t)
+  const { watcher, session } = makeWatcher(root, { config: { enabled: false } })
+  await watcher.onSessionEvent(session, event('turn/start'))
+  await mkdir(path.join(root, '_tmp_off'))
+  await watcher.onSessionEvent(session, event('turn/end'))
+  assert.equal(await exists(path.join(root, '_tmp_off')), true)
+  assert.equal(await exists(path.join(root, 'tmp')), false)
+})
+
+test('quarantine: disabling mid-turn skips the sweep for that turn', async t => {
+  const root = await fixture(t)
+  const { watcher, session, setConfig } = makeWatcher(root)
+  await watcher.onSessionEvent(session, event('turn/start'))
+  await mkdir(path.join(root, '_tmp_late'))
+  setConfig({ enabled: false })
+  await watcher.onSessionEvent(session, event('turn/end'))
+  assert.equal(await exists(path.join(root, '_tmp_late')), true)
+})
+
+test('quarantine: quarantine=off skips the sweep', async t => {
+  const root = await fixture(t)
+  const { watcher, session } = makeWatcher(root, { config: { quarantine: 'off' } })
+  await watcher.onSessionEvent(session, event('turn/start'))
+  await mkdir(path.join(root, '_tmp_off2'))
+  await watcher.onSessionEvent(session, event('turn/end'))
+  assert.equal(await exists(path.join(root, '_tmp_off2')), true)
 })
 
 async function exists(target) {

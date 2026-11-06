@@ -128,12 +128,14 @@ test('warn mode logs would-deny but allows both layers', () => {
   assert.equal(nextCalled, true)
 })
 
-test('quarantine watcher subscribes to session/event by default and can be opted out', () => {
+test('quarantine watcher subscribes to session/event; quarantine:off is checked live', () => {
   const { listeners } = mount()
   assert.equal(typeof listeners['session/event']?.[0], 'function')
 
+  // The watcher is always registered so enabling quarantine from the settings
+  // page works without a remount; it decides per turn from the live config.
   const off = mount({ config: { quarantine: 'off' } })
-  assert.equal(off.listeners['session/event'], undefined)
+  assert.equal(typeof off.listeners['session/event']?.[0], 'function')
 })
 
 test('lifecycle: registers through ctx.effect and disposes the guard with the plugin', () => {
@@ -165,10 +167,53 @@ test('lifecycle: registers through ctx.effect and disposes the guard with the pl
   assert.equal(events.filter(name => name === 'unregistered').length, 1)
 })
 
-test('enabled:false disables every layer, including the quarantine watcher', () => {
+test('enabled:false makes every gate allow (live config, no remount needed)', () => {
   const { guard, listeners } = mount({ config: { enabled: false } })
-  assert.equal(guard, undefined)
-  assert.deepEqual(Object.keys(listeners), [])
+  assert.equal(typeof guard, 'function')
+  assert.equal(guard(exec('write', { file_path: '_tmp_x/a.txt' })), undefined)
+  const pre = listeners['tools/pre-execute'][0]
+  let nextCalled = false
+  pre(exec('write', { file_path: '_tmp_x/a.txt' }), () => {
+    nextCalled = true
+    return Promise.resolve({ kind: 'allow' })
+  })
+  assert.equal(nextCalled, true)
+})
+
+test('volatile config is read live so the settings page applies without remounting', () => {
+  const captured = {}
+  const listeners = {}
+  const ctx = {
+    tools: {
+      guard(guard) {
+        captured.guard = guard
+        return () => {}
+      },
+    },
+    get: service => {
+      if (service === 'sandboxPolicy') return { resolve: () => ({ workspaceRoot: ROOT }) }
+      if (service === 'workingDirectory') return { get: () => ROOT }
+      return undefined
+    },
+    on(name, listener) {
+      ;(listeners[name] ??= []).push(listener)
+    },
+    effect(execute) {
+      execute()
+    },
+  }
+  // What the loader passes for a root-volatile Config schema.
+  const live = {
+    value: { logFile: 'state/apply-test.log' },
+    get() {
+      return this.value
+    },
+  }
+  apply(ctx, live)
+  assert.match(captured.guard(exec('write', { file_path: '_tmp_live/a.txt' })), /_tmp_live/)
+
+  live.value = { logFile: 'state/apply-test.log', enabled: false }
+  assert.equal(captured.guard(exec('write', { file_path: '_tmp_live/a.txt' })), undefined)
 })
 
 test('0.2.2: tools/pre-execute denies temp creation before the approval prompt', async () => {

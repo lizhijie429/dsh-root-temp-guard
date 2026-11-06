@@ -155,11 +155,23 @@ desktop profile 由 Electron 独占管理，`dsh plugin` 不直接管理它，�
 dsh headless --patch <含 root-temp-guard insert 的 yaml> "hello"
 ```
 
+## 图形化设置页
+
+安装为 profile 组合包（`dsh plugin add`）后，DSH Web 界面会加载本包的浏览器半侧（`dsh.client`），在 **插件页 → 已安装 → `dsh-root-temp-guard` → 行 `root-temp-guard` 的「配置」** 打开图形化设置页；桌面端内嵌的 Web UI 同样可用。
+
+- 页面覆盖全部配置项：启用开关、`deny`/`warn`、统一临时目录、清扫策略与目标目录、额外放行名、名称正则、扩展名、额外文件/命令工具、固定根目录、日志与拒绝文案；
+- 保存通过 DSH 设置服务（`ctx.configForms`）写入 profile 的 Cordis patch；Host `Config` schema 根节点是 `.volatile()`，**保存后立即生效，无需重启或重挂载**；
+- 「恢复默认」会清除该字段的 profile 覆盖层（回到继承值/默认值）；
+- headless / ACP 等没有 Web 客户端的 profile 不显示设置页，仍按下文的 `cordis.patch.yml` 编辑；
+- `vendor/` 内置了 `@deepseek-ai/schemastery` 与 `@deepseek-ai/cosmokit`（MIT，见 `vendor/README.md`），因此按绝对路径插入、没有 `node_modules` 的桌面 profile 也能提供 schema，无需额外 npm 依赖。
+
+> 浏览器半侧是手写 bundle（`lib/client.js`，遵循 DSH `__ModuleLoader__` 格式，无需构建步骤）；`dsh.client.platform` 仅声明 `web`，纯 CLI 宿主不会加载它。
+
 ## 验证
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 61 个用例，含真实文件系统 quarantine 并发/截断套件
+node --test "test/*.test.mjs"   # 70 个用例，含真实文件系统 quarantine、Config schema 与客户端 bundle 测试
 npm pack --dry-run              # 校验 npm 包内容（含 cordis.patch.yml）
 Get-Content state\root-temp-guard.log
 ```
@@ -200,6 +212,8 @@ Get-Content state\root-temp-guard.log
 - **MCP / 第三方插件工具默认不覆盖**：`dsh-mcp-client` 或其它插件注册的任意工具名（如 filesystem MCP 的 `write_file`/`create_directory`）不在默认工具集内；它们通常也不走 `ctx.fs` intent，只能靠回合结束清扫（名称匹配时）或沙箱兜底。需要时用 `extraWriteTools`/`extraShellTools` 显式追加。
 - **PTC `run_code` 内的直接文件系统调用**：嵌套**工具**调用会经过同一策略流水线（守卫生效），但程序代码若直接调用 `fs`（如 `require('fs').mkdirSync`）不经过 `ctx.tools`/`ctx.fs`，插件看不到，只有清扫/沙箱兜底。
 - **agentless 调用不拦截**：没有 session 的调用拿不到工作区上下文，守卫直接放行（fail-open）。
+- **图形化设置页只在 Web 客户端可用**：headless / ACP 等没有浏览器半侧的 profile 不显示设置页，也不会加载 `lib/client.js`；这些部署仍用 `cordis.patch.yml` 编辑。设置页还要求 DSH 自带的 settings/config-editor 服务（0.2.2 基础组合包已提供）。
+- **Config schema 有意宽松**：根节点 `.volatile()` + 字段 `any` 让旧配置不会因类型不符而加载失败，也保证设置页可编辑；非法值仍由运行时 `normalizeConfig` 告警并按默认值回退，因此表单里填错不会"存不进去"，但运行时行为按回退值执行。
 - **子代理 / workflow / PTC 覆盖未做端到端验证**：机制上走同一注册表，但未集成测试；不要把这条当保证（并发会话的清扫已按 root 延迟到最后回合，见"四层拦截"）。
 - **清扫语义**：turn/start 前已存在的临时目录不会被动；baseline 读取失败时跳过该 root；移动而非删除（`tmp/_quarantine/` 可恢复）；单次最多移动 50 个，超出/失败项进入 pending 由后续回合重试（最多记 500 个/root）；`mode: warn` 下只记 `would-move` 不移动。若某后台进程仍在写该目录，重命名可能失败并记录 `quarantine.move-failed`（同样进入 pending）。
 - **日志**：挂载时轮转一次（>5MB → `.1`），运行期间不轮转；写失败被吞。

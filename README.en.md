@@ -155,11 +155,23 @@ Replace `<you>` with your user name. The desktop profile's `patchReload` default
 dsh headless --patch <yaml containing the root-temp-guard insert> "hello"
 ```
 
+## Graphical settings page
+
+Once installed as a profile bundle (`dsh plugin add`), the DSH Web client loads this package's browser half (`dsh.client`): open **Plugins → Installed → `dsh-root-temp-guard` → the `root-temp-guard` row → Configure** to get the graphical settings page. The desktop app's embedded Web UI works the same way.
+
+- The page covers every option: enabled switch, `deny`/`warn`, unified temp directory, sweep policy and target directory, extra allowed names, name regexes, extensions, extra file/shell tools, pinned root, log file and denial text;
+- Saving goes through the DSH settings service (`ctx.configForms`) into the profile's Cordis patch; the Host `Config` schema is root-`.volatile()`, so **saved values apply immediately without a restart or remount**;
+- Reset clears that field's profile override (back to the inherited/default value);
+- headless / ACP profiles have no Web client, so they show no page; edit `cordis.patch.yml` as described below;
+- `vendor/` contains `@deepseek-ai/schemastery` and `@deepseek-ai/cosmokit` (MIT, see `vendor/README.md`), so a desktop profile inserted by absolute path with no `node_modules` still gets the schema without extra npm dependencies.
+
+> The browser half is a hand-written bundle (`lib/client.js`, DSH `__ModuleLoader__` format, no build step); `dsh.client.platform` is `web` only, so pure CLI hosts never load it.
+
 ## Verify
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 61 cases, including real-filesystem quarantine concurrency/truncation suites
+node --test "test/*.test.mjs"   # 70 cases, including real-filesystem quarantine, Config schema and client-bundle tests
 npm pack --dry-run              # validate npm package contents (includes cordis.patch.yml)
 Get-Content state\root-temp-guard.log
 ```
@@ -200,6 +212,8 @@ Community directories:
 - **MCP / third-party plugin tools are not covered by default**: arbitrary tool names registered by `dsh-mcp-client` or other plugins (e.g. a filesystem MCP's `write_file`/`create_directory`) are outside the default sets, and they usually do not go through `ctx.fs` intents either, so only the turn-end sweep (when the name matches) or the sandbox stops them. Add them explicitly with `extraWriteTools`/`extraShellTools` when needed.
 - **Direct filesystem calls inside PTC `run_code` programs**: nested **tool** calls go through the same policy pipeline (guarded), but code that calls `fs` directly (e.g. `require('fs').mkdirSync`) bypasses `ctx.tools`/`ctx.fs` and is only covered by the sweep/sandbox.
 - **Agentless calls are not checked**: without a session there is no workspace context, so the guard allows the call (fail-open).
+- **The graphical settings page only exists in the Web client**: headless / ACP profiles have no browser half, so they neither show the page nor load `lib/client.js`; edit `cordis.patch.yml` there. The page also needs DSH's settings/config-editor services (the 0.2.2 base bundle provides them).
+- **The Config schema is intentionally permissive**: root `.volatile()` plus `any` fields keep legacy configs loadable and make every field editable by the page; invalid values are still reported by `normalizeConfig` at runtime and fall back to defaults, so a bad value may save but behave as the fallback.
 - **Subagent / workflow / PTC coverage is not end-to-end tested**: they share the same registry in principle, but there is no integration test yet; do not treat it as a guarantee. (Concurrent sessions are handled by deferring the sweep per root until the last turn, see "Four enforcement layers".)
 - **Sweep semantics**: temp directories that already existed before `turn/start` are untouched; when the baseline read fails that root is skipped; entries are moved (recoverable under `tmp/_quarantine/`), at most 50 per sweep, and entries over the cap or whose rename failed become pending and are retried by later sweeps (up to 500 remembered per root); in `mode: warn` only `would-move` is logged. If a background process still writes into the directory, the rename can fail and is logged as `quarantine.move-failed` (also retried).
 - **Logging**: rotated once at mount (>5 MB → `.1`), not rotated while running; write failures are swallowed.

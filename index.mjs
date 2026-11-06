@@ -32,11 +32,15 @@
 import { appendFileSync, mkdirSync, realpathSync, renameSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Config, currentConfigValue } from './lib/config.mjs'
 import { evaluate, evaluateTarget, normalizeConfig } from './lib/guard.mjs'
 import { createQuarantineWatcher } from './lib/quarantine.mjs'
 
 /** Cordis plugin name. */
 export const name = 'root-temp-guard'
+
+/** Host config schema; DSH uses it for validation and the graphical settings page. */
+export { Config }
 
 /** The tool registry is the only service this plugin requires. */
 export const inject = ['tools']
@@ -54,7 +58,7 @@ const LOG_MAX_BYTES = 5 * 1024 * 1024
 export function apply(ctx, rawConfig) {
   let log = () => {}
   try {
-    const config = normalizeConfig(rawConfig, PLUGIN_DIR)
+    const config = normalizeConfig(currentConfigValue(rawConfig) ?? {}, PLUGIN_DIR)
     log = createLog(config.logFile)
     for (const message of config.warnings) {
       log(`config.warning ${message}`)
@@ -65,10 +69,17 @@ export function apply(ctx, rawConfig) {
       }
     }
 
-    if (!config.enabled) {
-      // Total off switch: no gate, no fs listener, no quarantine watcher.
-      log(`plugin.mounted pid=${process.pid} enabled=false`)
-      return
+    /**
+     * Read the live config. With the root-volatile `Config` schema the loader
+     * passes a stable reference whose value changes when the settings page
+     * saves, so every gate re-reads it instead of closing over the mount value.
+     */
+    const configNow = () => {
+      try {
+        return normalizeConfig(currentConfigValue(rawConfig) ?? {}, PLUGIN_DIR)
+      } catch {
+        return config
+      }
     }
 
     /** Canonical workspace roots, realpath-ed once per distinct root. */
@@ -92,8 +103,9 @@ export function apply(ctx, rawConfig) {
     const resolveContext = exec => {
       const session = exec?.agent?.session
       const cwd = resolveCwd(ctx, session)
+      const current = configNow()
 
-      if (config.workspaceRoot.length > 0) return { root: config.workspaceRoot, cwd }
+      if (current.workspaceRoot.length > 0) return { root: current.workspaceRoot, cwd }
       if (session === undefined) return { root: undefined, cwd } // agentless: no workspace to judge
 
       let root = ''
@@ -113,11 +125,12 @@ export function apply(ctx, rawConfig) {
 
     const guard = exec => {
       try {
+        const current = configNow()
         const { root, cwd } = resolveContext(exec)
-        const reason = evaluate(exec, config, { root, cwd })
+        const reason = evaluate(exec, current, { root, cwd })
         if (reason !== undefined) {
           log(`deny source=tool tool=${forLog(exec?.name)} reason=${forLog(reason)}`)
-          if (config.mode === 'warn') return undefined
+          if (current.mode === 'warn') return undefined
         }
         return reason
       } catch (error) {
@@ -136,9 +149,10 @@ export function apply(ctx, rawConfig) {
     const preExecute = (exec, next) => {
       const advance = () => (typeof next === 'function' ? next() : undefined)
       try {
+        const current = configNow()
         const { root, cwd } = resolveContext(exec)
-        const reason = evaluate(exec, config, { root, cwd })
-        if (reason !== undefined && config.mode !== 'warn') {
+        const reason = evaluate(exec, current, { root, cwd })
+        if (reason !== undefined && current.mode !== 'warn') {
           log(`deny source=tool stage=pre tool=${forLog(exec?.name)} reason=${forLog(reason)}`)
           return { kind: 'deny', reason }
         }
@@ -187,16 +201,18 @@ export function apply(ctx, rawConfig) {
     // write before the observation-policy listener (which never calls next()).
     const fsGuard = (target, actor, next) => {
       let reason
+      let current
       try {
+        current = configNow()
         const { root, cwd } = resolveContext(actor)
-        reason = evaluateTarget(target, config, { root, cwd, canonicalRoot: canonicalRootOf(root) })
+        reason = evaluateTarget(target, current, { root, cwd, canonicalRoot: canonicalRootOf(root) })
       } catch (error) {
         log(`fs-intent.error ${forLog(error?.message ?? error)}`)
         return next()
       }
       if (reason !== undefined) {
         log(`deny source=fs tool=${forLog(actor?.name)} target=${forLog(target?.displayPath)} reason=${forLog(reason)}`)
-        if (config.mode !== 'warn') throw new Error(reason)
+        if (current.mode !== 'warn') throw new Error(reason)
       }
       return next()
     }
@@ -205,13 +221,12 @@ export function apply(ctx, rawConfig) {
       ctx.on('fs/edit-intent', fsGuard, { prepend: true })
     }
 
-    // Third layer: turn-end sweep. Anything a shell command bypassed past the
-    // heuristic still shows up as a NEW root entry; move it into
-    // <tmpDir>/<quarantineDirName>/ (moved, never deleted) at turn end.
-    if (config.quarantine === 'strict' && typeof ctx.on === 'function') {
+    // Third layer: turn-end sweep. Created unconditionally so enabling
+    // `quarantine` from the settings page takes effect without a remount; the
+    // watcher itself checks the live `enabled`/`quarantine` values per turn.
+    if (typeof ctx.on === 'function') {
       const quarantine = createQuarantineWatcher({
-        config,
-        mode: config.mode,
+        getConfig: configNow,
         log,
         resolveRoot: session => resolveContext({ agent: { session } }).root,
       })
