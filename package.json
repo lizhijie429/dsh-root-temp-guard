@@ -13,6 +13,7 @@
     "index.mjs",
     "lib",
     "vendor",
+    "assets",
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
@@ -44,7 +45,9 @@
     "dsh-bundle",
     "deepseek-harness",
     "guard",
-    "temporary-files"
+    "temporary-files",
+    "settings",
+    "configuration"
   ],
   "license": "MIT",
   "author": "lizhijie429",

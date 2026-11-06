@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSH Root Temp Guard — 根目录临时文件守卫</title>
+<meta name="description" content="DSH Host plugin that blocks temporary files/directories in the workspace root, sweeps new root entries into tmp/_quarantine at turn end, and ships a graphical settings page.">
+<meta property="og:title" content="DSH Root Temp Guard">
+<meta property="og:description" content="Four enforcement layers, turn-end quarantine and a graphical settings page for DeepSeek Harness.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://raw.githubusercontent.com/lizhijie429/dsh-root-temp-guard/main/assets/settings-page.png">
+<link rel="canonical" href="https://lizhijie429.github.io/dsh-root-temp-guard/">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --bg-soft: #f6f8fa;
+    --card: #ffffff;
+    --text: #1f2328;
+    --muted: #5b6573;
+    --line: #d8dee4;
+    --accent: #2f6fed;
+    --accent-soft: #e8f0fe;
+    --code-bg: #0f172a;
+    --code-text: #e2e8f0;
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --radius: 14px;
+    --max: 1080px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --bg-soft: #151b23;
+      --card: #151b23;
+      --text: #e6edf3;
+      --muted: #9aa7b4;
+      --line: #30363d;
+      --accent: #6ea8fe;
+      --accent-soft: #182842;
+      --code-bg: #010409;
+      --code-text: #d8e2ee;
+      --ok: #3fb950;
+      --warn: #d29922;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.92em;
+  }
+  .wrap { width: min(var(--max), calc(100% - 40px)); margin: 0 auto; }
+  header.site {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text); }
+  .brand img { width: 30px; height: 30px; border-radius: 8px; }
+  .nav-links { display: flex; align-items: center; gap: 18px; font-size: 14px; flex-wrap: wrap; }
+  .nav-links a { color: var(--muted); }
+  .nav-links a:hover { color: var(--accent); text-decoration: none; }
+  .lang { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; padding: 5px 10px; cursor: pointer; font: inherit; font-size: 13px; }
+  .hero { padding: 64px 0 36px; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 5px 12px; font-weight: 700; }
+  h1 { font-size: clamp(34px, 5vw, 54px); line-height: 1.1; margin: 18px 0 12px; letter-spacing: -.02em; }
+  .sub { color: var(--muted); font-size: clamp(16px, 2vw, 19px); max-width: 760px; margin: 0 0 24px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 10px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); font-weight: 600; font-size: 14px; }
+  .btn:hover { text-decoration: none; border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.05); }
+  .quick { margin-top: 18px; background: var(--code-bg); color: var(--code-text); border-radius: 10px; padding: 12px 14px; display: flex; justify-content: space-between; gap: 14px; align-items: center; font-size: 13px; overflow-x: auto; }
+  .quick code { white-space: nowrap; }
+  .grid { display: grid; gap: 16px; }
+  .two { grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr); }
+  .three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .card h3 { margin: 0 0 6px; font-size: 16px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; }
+  .card .ico { width: 30px; height: 30px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-size: 15px; margin-bottom: 12px; }
+  section { padding: 32px 0; }
+  h2 { font-size: clamp(24px, 3vw, 32px); margin: 0 0 8px; letter-spacing: -.01em; }
+  .lead { color: var(--muted); margin: 0 0 22px; max-width: 760px; }
+  .shots { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 18px; align-items: start; }
+  .shot { background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+  .shot img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
+  .shot figcaption { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: center; }
+  .flow { background: var(--code-bg); color: var(--code-text); border-radius: var(--radius); padding: 18px; overflow-x: auto; font-size: 13px; line-height: 1.7; }
+  .flow .dim { color: #94a3b8; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+  .pill.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  .note { border-left: 3px solid var(--warn); background: var(--bg-soft); border-radius: 0 10px 10px 0; padding: 12px 16px; color: var(--muted); font-size: 14px; }
+  .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .steps pre { background: var(--code-bg); color: var(--code-text); border-radius: 10px; padding: 14px; overflow-x: auto; margin: 10px 0 0; }
+  .linklist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .linklist a { display: flex; justify-content: space-between; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); font-size: 14px; }
+  .linklist a span { color: var(--muted); font-size: 12px; }
+  .linklist a:hover { border-color: var(--accent); text-decoration: none; }
+  footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; padding: 24px 0 40px; }
+  .lang-en .zh, .lang-zh .en { display: none; }
+  @media (max-width: 860px) {
+    .two, .three, .shots, .steps, .linklist { grid-template-columns: 1fr; }
+    .nav-links { gap: 12px; }
+    .hero { padding-top: 40px; }
+  }
+</style>
+</head>
+<body class="lang-zh">
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="./">
+      <img src="https://raw.githubusercontent.com/lizhijie429/dsh-root-temp-guard/main/assets/icon.png" alt="">
+      <span>dsh-root-temp-guard</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features"><span class="zh">特性</span><span class="en">Features</span></a>
+      <a href="#settings"><span class="zh">设置页</span><span class="en">Settings</span></a>
+      <a href="#install"><span class="zh">安装</span><span class="en">Install</span></a>
+      <a href="#community"><span class="zh">社区</span><span class="en">Community</span></a>
+      <a href="https://github.com/lizhijie429/dsh-root-temp-guard">GitHub ↗</a>
+      <button class="lang" id="lang" type="button">EN</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <span class="eyebrow">DSH Host Plugin · bundle + web client</span>
+    <h1>
+      <span class="zh">根目录临时文件守卫</span>
+      <span class="en">Root Temp Guard</span>
+    </h1>
+    <p class="sub">
+      <span class="zh">把「临时产物统一放 <code>tmp/</code>」从文字约定变成执行期拦截：四层检查覆盖文件工具与命令类工具，回合结束把新增的根目录临时项移入 <code>tmp/_quarantine/</code>，并提供保存即生效的图形化设置页。</span>
+      <span class="en">Turn “keep temporary artifacts under <code>tmp/</code>” from a written convention into an enforced check: four enforcement layers cover file and shell tools, new root temp entries are moved into <code>tmp/_quarantine/</code> at turn end, and a graphical settings page saves live.</span>
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="#install"><span class="zh">安装</span><span class="en">Install</span></a>
+      <a class="btn" href="https://github.com/lizhijie429/dsh-root-temp-guard">GitHub</a>
+      <a class="btn" href="https://lizhijie429.github.io/dsh-root-temp-guard/index.json"><span class="zh">插件市场索引</span><span class="en">Market index</span></a>
+    </div>
+    <div class="quick">
+      <code>dsh plugin --profile web add dsh-root-temp-guard</code>
+      <span class="pill ok"><span class="zh">MIT</span><span class="en">MIT</span></span>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="shots">
+      <figure class="shot" style="margin:0">
+        <img src="https://raw.githubusercontent.com/lizhijie429/dsh-root-temp-guard/main/assets/plugin-card.png" alt="Plugins page card">
+        <figcaption><span class="zh">插件页「内置插件配置」入口，绝对路径插入的桌面 profile 也会出现</span><span class="en">Plugins → Built-in plugin configuration, also for absolute-path desktop profiles</span></figcaption>
+      </figure>
+      <figure class="shot" style="margin:0" id="settings">
+        <img src="https://raw.githubusercontent.com/lizhijie429/dsh-root-temp-guard/main/assets/settings-page.png" alt="Graphical settings page">
+        <figcaption><span class="zh">图形化设置页：13 项配置，保存即生效，可恢复默认</span><span class="en">13 fields, live saves, reset-to-defaults clears profile overrides</span></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="wrap" id="features">
+    <h2><span class="zh">四层拦截，fail-open</span><span class="en">Four layers, fail-open</span></h2>
+    <p class="lead">
+      <span class="zh">文件类工具走参数层与已解析目标层；命令类工具做启发式文本匹配；回合结束清扫兜底。任何内部异常一律放行并记日志，不会卡死工具调用。</span>
+      <span class="en">File tools are checked at the argument and resolved-target layers, shell tools are matched heuristically, and a turn-end sweep backstops both. Internal errors fail open and are logged.</span>
+    </p>
+    <div class="grid three">
+      <div class="card"><div class="ico">1</div><h3><span class="zh">提前拒绝</span><span class="en">Early deny</span></h3><p><span class="zh"><code>tools/pre-execute</code> 在审批之前返回 deny；warn 模式只记日志。</span><span class="en"><code>tools/pre-execute</code> denies before approval; warn mode only logs.</span></p></div>
+      <div class="card"><div class="ico">2</div><h3><span class="zh">单调守卫</span><span class="en">Monotonic guard</span></h3><p><span class="zh"><code>ctx.tools.guard()</code> 在审批之后执行，按会话当前工作目录解析路径。</span><span class="en"><code>ctx.tools.guard()</code> runs after approval and resolves against the session's current directory.</span></p></div>
+      <div class="card"><div class="ico">3</div><h3><span class="zh">已解析目标</span><span class="en">Resolved target</span></h3><p><span class="zh">监听 <code>fs/write-intent</code> / <code>fs/edit-intent</code>，用 realpath 身份判定，junction 无法绕过。</span><span class="en">Listens to <code>fs/write-intent</code> / <code>fs/edit-intent</code> and judges by realpath, so junctions cannot hide entries.</span></p></div>
+      <div class="card"><div class="ico">4</div><h3><span class="zh">回合结束清扫</span><span class="en">Turn-end sweep</span></h3><p><span class="zh">把本轮新增的根目录临时项移动到 <code>tmp/_quarantine/</code>，可人工恢复；并发回合延迟到最后回合。</span><span class="en">New root temp entries move to <code>tmp/_quarantine/</code> for manual recovery; concurrent turns defer to the last one.</span></p></div>
+      <div class="card"><div class="ico">⚙</div><h3><span class="zh">实时配置</span><span class="en">Live config</span></h3><p><span class="zh">根 <code>.volatile()</code> Config schema，设置页保存后无需重启；转 warn 只看日志。</span><span class="en">Root <code>.volatile()</code> Config schema; saves apply without a restart, and warn mode logs instead of denying.</span></p></div>
+      <div class="card"><div class="ico">◎</div><h3><span class="zh">会话根感知</span><span class="en">Session-root aware</span></h3><p><span class="zh">工作区根目录来自当前会话，换项目自动生效；只有显式配置时才固定根目录。</span><span class="en">The workspace root comes from the session, so switching projects just works; pin it only explicitly.</span></p></div>
+    </div>
+    <div class="note" style="margin-top:16px">
+      <span class="zh"><strong>定位说明：</strong>这是卫生/约定守卫，不是安全边界；命令类只做启发式匹配，真正的边界是 DSH 沙箱。</span>
+      <span class="en"><strong>Scope:</strong> this is a hygiene/convention guard, not a security boundary. Shell matching is heuristic; the DSH sandbox is the real boundary.</span>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <h2><span class="zh">工作方式</span><span class="en">How it works</span></h2>
+    <div class="flow"><span class="dim">// DSH 0.2.2 tool pipeline</span><br>
+tools/pre-execute <span class="dim">→</span> ctx.tools.guard() <span class="dim">→</span> execute<br>
+&nbsp;&nbsp;write / edit / str_replace_editor / apply_patch <span class="dim">→</span> fs.resolve <span class="dim">→</span> fs/write-intent | fs/edit-intent <span class="dim">→</span> ctx.fs<br>
+&nbsp;&nbsp;session/event turn/start · turn/end <span class="dim">→</span> quarantine sweep</div>
+  </section>
+
+  <section class="wrap" id="install">
+    <h2><span class="zh">两种安装方式</span><span class="en">Two ways to install</span></h2>
+    <div class="steps">
+      <div class="card">
+        <h3><span class="zh">CLI profile（组合包）</span><span class="en">CLI profile (bundle)</span></h3>
+        <p><span class="zh">web / headless 等由 CLI 管理的 profile，安装后自动插入 <code>root-temp-guard</code> 行。</span><span class="en">For web/headless profiles managed by the CLI; installation inserts the <code>root-temp-guard</code> row automatically.</span></p>
+        <pre>dsh plugin --profile web add dsh-root-temp-guard</pre>
+        <p style="margin-top:10px"><span class="zh">本地目录安装：</span><span class="en">From a local directory:</span></p>
+        <pre>dsh plugin --profile web add "file:$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"</pre>
+      </div>
+      <div class="card">
+        <h3><span class="zh">桌面 profile（绝对路径）</span><span class="en">Desktop profile (absolute path)</span></h3>
+        <p><span class="zh">desktop profile 由 Electron 管理，在 <code>cordis.patch.yml</code> 末尾插入：</span><span class="en">The desktop profile is Electron-managed; append this to its <code>cordis.patch.yml</code>:</span></p>
+        <pre>- insert:
+    - id: root-temp-guard
+      name: '&lt;用户目录&gt;\.dsh\plugins\dsh-root-temp-guard\index.mjs'
+      config:
+        tmpDirName: tmp</pre>
+        <p style="margin-top:10px"><span class="zh">代码改动后重启一次；设置页卡片随后出现。</span><span class="en">Restart once after code changes; the settings card then appears.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap" id="community">
+    <h2><span class="zh">市场与社区</span><span class="en">Market &amp; community</span></h2>
+    <div class="linklist">
+      <a href="https://lizhijie429.github.io/dsh-root-temp-guard/index.json"><span class="zh">DSH 插件市场索引</span><span class="en">DSH market index</span><span>index.json ↗</span></a>
+      <a href="https://github.com/lizhijie429/dsh-root-temp-guard"><span class="zh">GitHub 仓库</span><span class="en">GitHub repository</span><span>lizhijie429 ↗</span></a>
+      <a href="https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11726"><span class="zh">awesome-dsh-plugin 条目</span><span class="en">awesome-dsh-plugin entry</span><span>merged ↗</span></a>
+      <a href="https://dshpluginhub.ai/zh/plugins/dsh-root-temp-guard"><span class="zh">DSH Plugin Hub</span><span class="en">DSH Plugin Hub</span><span>↗</span></a>
+      <a href="https://dsh-hub.cc/plugins/lizhijie429/dsh-root-temp-guard"><span class="zh">DSH Hub</span><span class="en">DSH Hub</span><span>↗</span></a>
+      <a href="https://deepseekplugin.org/submit"><span class="zh">提交到 deepseekplugin.org</span><span class="en">Submit to deepseekplugin.org</span><span>↗</span></a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="zh">MIT License · 卫生/约定守卫，不是安全边界 · <a href="https://github.com/lizhijie429/dsh-root-temp-guard">GitHub</a></span>
+    <span class="en">MIT License · a hygiene/convention guard, not a security boundary · <a href="https://github.com/lizhijie429/dsh-root-temp-guard">GitHub</a></span>
+  </div>
+</footer>
+
+<script>
+  (() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const button = document.getElementById('lang');
+    const apply = lang => {
+      const zh = lang === 'zh';
+      body.classList.toggle('lang-zh', zh);
+      body.classList.toggle('lang-en', !zh);
+      root.lang = zh ? 'zh-CN' : 'en';
+      button.textContent = zh ? 'EN' : '中文';
+      try { localStorage.setItem('rtg-lang', lang); } catch {}
+    };
+    let saved = null;
+    try { saved = localStorage.getItem('rtg-lang'); } catch {}
+    const initial = saved || ((navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en');
+    apply(initial === 'en' ? 'en' : 'zh');
+    button.addEventListener('click', () => apply(body.classList.contains('lang-zh') ? 'en' : 'zh'));
+  })();
+</script>
+</body>
+</html>

@@ -2,12 +2,19 @@
 
 [![test](https://github.com/lizhijie429/dsh-root-temp-guard/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/lizhijie429/dsh-root-temp-guard/actions/workflows/test.yml)
 [![npm](https://img.shields.io/npm/v/dsh-root-temp-guard.svg)](https://www.npmjs.com/package/dsh-root-temp-guard)
+[![release](https://img.shields.io/github/v/release/lizhijie429/dsh-root-temp-guard?display_name=tag)](https://github.com/lizhijie429/dsh-root-temp-guard/releases)
 
-[English](README.en.md) | [简体中文](README.md)
+[English](README.en.md) | [简体中文](README.md) | [Project page](https://lizhijie429.github.io/dsh-root-temp-guard/)
 
 A DSH host plugin that intercepts tool calls creating temporary directories/files in the workspace root, turning "keep temporary artifacts under one temp directory" from a **written convention** into an **enforced check**.
 
 > ⚠️ **Scope**: this is a **hygiene/convention guard**, not a security boundary. File tools are checked by an argument layer (early deny + monotonic guard) and a resolved-target layer; shell commands are matched heuristically. Do not rely on it against malicious behaviour — the real boundary is the DSH sandbox.
+
+## What's new
+
+- **0.9.1**: a **Root temp guard** card under Plugins → "Built-in plugin configuration"; desktop profiles that insert the plugin by absolute path get the settings page too.
+- **0.9.0**: Host Config schema plus a 13-field graphical settings page; saves apply live through the root-`.volatile()` schema, no restart.
+- **0.8.0**: concurrent-turn quarantine deferral, pending retries, shell inline operands, and `apply_patch` parser parity.
 
 ## Four enforcement layers
 
@@ -164,6 +171,16 @@ Once installed, the DSH Web client loads this package's browser half (`dsh.clien
 
 The desktop app's embedded Web UI works the same way.
 
+<p align="center">
+  <img src="assets/plugin-card.png" alt="Root temp guard card under Built-in plugin configuration" width="720"><br>
+  <sub>The Plugins → "Built-in plugin configuration" entry (also present for absolute-path desktop profiles)</sub>
+</p>
+
+<p align="center">
+  <img src="assets/settings-page.png" alt="Root temp guard graphical settings page" width="520"><br>
+  <sub>The settings page: 13 fields, live saves, and "Reset to defaults" clears profile overrides</sub>
+</p>
+
 - The page covers every option: enabled switch, `deny`/`warn`, unified temp directory, sweep policy and target directory, extra allowed names, name regexes, extensions, extra file/shell tools, pinned root, log file and denial text;
 - Saving goes through the DSH settings service (`ctx.configForms`) into the profile's Cordis patch; the Host `Config` schema is root-`.volatile()`, so **saved values apply immediately without a restart or remount**;
 - Reset clears that field's profile override (back to the inherited/default value);
@@ -177,7 +194,7 @@ The desktop app's embedded Web UI works the same way.
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 70 cases, including real-filesystem quarantine, Config schema and client-bundle tests
+node --test "test/*.test.mjs"   # 71 cases, including real-filesystem quarantine, Config schema, client-bundle and promotion-asset tests
 npm pack --dry-run              # validate npm package contents (includes cordis.patch.yml)
 Get-Content state\root-temp-guard.log
 ```
@@ -195,18 +212,25 @@ Example log:
 
 ## Plugin market and community listings
 
-Besides `dsh plugin add`, this repository publishes a **DSH plugin-market index (format 1)** on GitHub Pages:
-
-- Index URL: <https://lizhijie429.github.io/dsh-root-temp-guard/index.json>
-- Subscribe in DSH: **Plugins → Experimental plugins → enable "Custom plugin market" → "Discover" → "Add index source"**, then paste the URL
-- Regenerate: `npm run market:index` (pins the current `HEAD` commit and timestamp, and copies the icon into `docs/icons/`); committing `docs/` refreshes Pages automatically
-- The index is validated with the official `@deepseek-ai/dsh-plugin-market-index` (`parseMarketIndex` + `marketInstallTarget`)
-
-Community directories:
-
-- **awesome-dsh-plugin**: PR adding `data/plugins/lizhijie429__dsh-root-temp-guard.yml` ([#11726](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11726)). The list requires repositories to be at least one day old; until then CI is red and re-runs itself to green once the age threshold is met — no need to reopen the PR.
-- **deepseekplugin.org**: paste this repository's URL at <https://deepseekplugin.org/submit> (no account; listed immediately after automatic parsing). The repository already carries the `dsh-plugin` topic required for recognition.
+- **Project page (GitHub Pages)**: <https://lizhijie429.github.io/dsh-root-temp-guard/> — the four layers, the graphical settings page, and both installation modes on one page
+- **DSH plugin-market index (format 1)**: <https://lizhijie429.github.io/dsh-root-temp-guard/index.json>
+  - Subscribe in DSH: **Plugins → Experimental plugins → enable "Custom plugin market" → "Discover" → "Add index source"**, then paste the URL
+  - Regenerate: `npm run market:index` (pins the current `HEAD` commit and timestamp, and copies the icon into `docs/icons/`); committing `docs/` refreshes Pages automatically
+  - The index is validated with the official `@deepseek-ai/dsh-plugin-market-index` (`parseMarketIndex` + `marketInstallTarget`)
+- **awesome-dsh-plugin**: listed as `data/plugins/lizhijie429__dsh-root-temp-guard.yml` ([PR #11726](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11726), merged)
+- **DSH Plugin Hub**: <https://dshpluginhub.ai/zh/plugins/dsh-root-temp-guard> (third-party directory, auto-listed from GitHub)
+- **DSH Hub**: <https://dsh-hub.cc/plugins/lizhijie429/dsh-root-temp-guard> (third-party directory, synced from the repo/README)
+- **deepseekplugin.org**: submit the repository URL at <https://deepseekplugin.org/submit> (not listed yet)
 - **npm**: once published, `dsh plugin --profile web add dsh-root-temp-guard` works directly.
+
+## Changelog
+
+| Version | Highlights |
+| --- | --- |
+| `0.9.1` | `plugins.item` settings card so absolute-path desktop profiles get the page; docs cover both entry points |
+| `0.9.0` | Host `Config` schema (root `.volatile()`) + Web graphical settings page; vendored schemastery/cosmokit; live saves |
+| `0.8.0` | Concurrent-turn quarantine deferral, pending retries, shell inline operands, `apply_patch` parser parity |
+| `0.7.0` | Adapted to DSH 0.2.2 pipeline changes (`fs/delete-intent`, etc.) |
 
 ## Known limitations
 

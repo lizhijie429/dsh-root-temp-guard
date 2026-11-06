@@ -21,6 +21,7 @@ const TEXT_FILES = [
   'lib/client.js',
   'vendor/README.md',
   'docs/index.json',
+  'docs/index.html',
   'scripts/update-market-index.mjs',
   'README.md',
   'README.en.md',
@@ -69,9 +70,22 @@ test('manifest declares the browser half for the graphical settings page', () =>
   assert.equal(pkg.exports?.['./client'], './lib/client.js')
   assert.equal(pkg.files.includes('lib'), true)
   assert.equal(pkg.files.includes('vendor'), true)
+  assert.equal(pkg.files.includes('assets'), true)
   assert.equal(pkg.files.includes('lib/client.js'), false) // covered by "lib"
   assert.equal(readFileSync(`${ROOT}/lib/client.js`, 'utf8').includes('__ModuleLoader__'), true)
   assert.equal(readFileSync(`${ROOT}/lib/config.mjs`, 'utf8').includes('volatile()'), true)
+})
+
+test('promotion assets and landing page exist', () => {
+  const assets = ['icon.png', 'plugin-card.png', 'settings-page.png']
+  for (const name of assets) {
+    assert.equal(readFileSync(`${ROOT}/assets/${name}`).length > 1000, true, `${name} missing or empty`)
+  }
+  const landing = readFileSync(`${ROOT}/docs/index.html`, 'utf8')
+  assert.match(landing, /dsh-root-temp-guard/)
+  assert.match(landing, /settings-page\.png/)
+  assert.match(landing, /lizhijie429\.github\.io\/dsh-root-temp-guard\/index\.json/)
+  assert.equal(readFileSync(`${ROOT}/docs/${JSON.parse(readFileSync(`${ROOT}/docs/index.json`, 'utf8')).plugins[0].icon}`).length > 0, true)
 })
 
 test('bundle patch declares a single insert row with plugin defaults', () => {

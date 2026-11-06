@@ -2,12 +2,19 @@
 
 [![test](https://github.com/lizhijie429/dsh-root-temp-guard/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/lizhijie429/dsh-root-temp-guard/actions/workflows/test.yml)
 [![npm](https://img.shields.io/npm/v/dsh-root-temp-guard.svg)](https://www.npmjs.com/package/dsh-root-temp-guard)
+[![release](https://img.shields.io/github/v/release/lizhijie429/dsh-root-temp-guard?display_name=tag)](https://github.com/lizhijie429/dsh-root-temp-guard/releases)
 
-[English](README.en.md) | 简体中文
+[English](README.en.md) | 简体中文 | [项目主页](https://lizhijie429.github.io/dsh-root-temp-guard/)
 
 DSH Host 插件：在工具调用层拦截"在工作区根目录创建临时目录 / 临时文件"，把"临时产物统一放临时目录"的项目约定从**文字规则**升级为**执行期拦截**。
 
 > ⚠️ **定位说明**：这是一个**卫生/约定守卫**，不是安全边界。文件类工具走参数层（提前拒绝 + 单调守卫）与已解析目标层，命令类只做启发式文本匹配。不要依赖它防御恶意行为——真正的边界是 DSH 沙箱。
+
+## 版本亮点
+
+- **0.9.1**：插件页「内置插件配置」新增 **根目录临时文件守卫** 卡片；按绝对路径手动插入的桌面 profile 也能打开图形化设置页。
+- **0.9.0**：新增 Host Config schema 与图形化设置页（13 项配置）；保存通过 `.volatile()` 配置实时生效，无需重启。
+- **0.8.0**：并发会话清扫延迟、pending 重试、shell 内联参数、`apply_patch` 解析对齐等工作管线修复。
 
 ## 四层拦截
 
@@ -164,6 +171,16 @@ dsh headless --patch <含 root-temp-guard insert 的 yaml> "hello"
 
 桌面端内嵌的 Web UI 同样可用。
 
+<p align="center">
+  <img src="assets/plugin-card.png" alt="插件页「内置插件配置」中的根目录临时文件守卫卡片" width="720"><br>
+  <sub>插件页「内置插件配置」入口（绝对路径插入的桌面 profile 也会出现）</sub>
+</p>
+
+<p align="center">
+  <img src="assets/settings-page.png" alt="根目录临时文件守卫图形化设置页" width="520"><br>
+  <sub>图形化设置页：13 项配置，保存即生效，「恢复默认」清除 profile 覆盖</sub>
+</p>
+
 - 页面覆盖全部配置项：启用开关、`deny`/`warn`、统一临时目录、清扫策略与目标目录、额外放行名、名称正则、扩展名、额外文件/命令工具、固定根目录、日志与拒绝文案；
 - 保存通过 DSH 设置服务（`ctx.configForms`）写入 profile 的 Cordis patch；Host `Config` schema 根节点是 `.volatile()`，**保存后立即生效，无需重启或重挂载**；
 - 「恢复默认」会清除该字段的 profile 覆盖层（回到继承值/默认值）；
@@ -177,7 +194,7 @@ dsh headless --patch <含 root-temp-guard insert 的 yaml> "hello"
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 70 个用例，含真实文件系统 quarantine、Config schema 与客户端 bundle 测试
+node --test "test/*.test.mjs"   # 71 个用例，含真实文件系统 quarantine、Config schema、客户端 bundle 与推广资产测试
 npm pack --dry-run              # 校验 npm 包内容（含 cordis.patch.yml）
 Get-Content state\root-temp-guard.log
 ```
@@ -195,18 +212,25 @@ Get-Content state\root-temp-guard.log
 
 ## 插件市场与社区收录
 
-除 `dsh plugin add` 安装外，本仓库还发布了一份 **DSH 插件市场索引（format 1）**，托管在 GitHub Pages：
-
-- 索引地址：<https://lizhijie429.github.io/dsh-root-temp-guard/index.json>
-- 在 DSH 中订阅：**插件 → 实验性插件 → 打开「自定义插件市场」→「发现」→「添加索引源」**，粘贴上面的地址
-- 生成/更新：`npm run market:index`（固定当前 `HEAD` 的 commit 与提交时间，并把图标复制到 `docs/icons/`）；提交 `docs/` 后 Pages 自动刷新
-- 索引已用官方校验器 `@deepseek-ai/dsh-plugin-market-index` 的 `parseMarketIndex` + `marketInstallTarget` 校验通过
-
-社区目录：
-
-- **awesome-dsh-plugin**：提交 `data/plugins/lizhijie429__dsh-root-temp-guard.yml` 的 PR（[#11726](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11726)）。该列表要求仓库创建满 1 天，未满时 CI 会先标红，达到年龄后自动 re-run 转绿，无需重开 PR
-- **deepseekplugin.org**：在 <https://deepseekplugin.org/submit> 粘贴本仓库 URL 即可（无账号、自动解析后即时上架）；本仓库已加 `dsh-plugin` topic，满足其自动识别条件
+- **项目主页（GitHub Pages）**：<https://lizhijie429.github.io/dsh-root-temp-guard/> —— 一页了解四层拦截、图形化设置页与两种安装方式
+- **DSH 插件市场索引（format 1）**：<https://lizhijie429.github.io/dsh-root-temp-guard/index.json>
+  - 在 DSH 中订阅：**插件 → 实验性插件 → 打开「自定义插件市场」→「发现」→「添加索引源」**，粘贴上面的地址
+  - 生成/更新：`npm run market:index`（固定当前 `HEAD` 的 commit 与提交时间，并把图标复制到 `docs/icons/`）；提交 `docs/` 后 Pages 自动刷新
+  - 索引已用官方校验器 `@deepseek-ai/dsh-plugin-market-index` 的 `parseMarketIndex` + `marketInstallTarget` 校验通过
+- **awesome-dsh-plugin**：条目 `data/plugins/lizhijie429__dsh-root-temp-guard.yml` 已收录（[PR #11726](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11726)，已合并）
+- **DSH Plugin Hub**：<https://dshpluginhub.ai/zh/plugins/dsh-root-temp-guard>（第三方目录，按 GitHub 仓库自动收录）
+- **DSH Hub**：<https://dsh-hub.cc/plugins/lizhijie429/dsh-root-temp-guard>（第三方目录，按仓库/README 自动同步）
+- **deepseekplugin.org**：可在 <https://deepseekplugin.org/submit> 粘贴仓库 URL 提交（目前尚未上架）
 - **npm**：发布后可直接 `dsh plugin --profile web add dsh-root-temp-guard`
+
+## 版本记录
+
+| 版本 | 主要内容 |
+| --- | --- |
+| `0.9.1` | 新增 `plugins.item` 设置卡片，绝对路径手动插入的桌面 profile 也能打开设置页；文档补充双入口说明 |
+| `0.9.0` | Host `Config` schema（根 `.volatile()`）+ Web 图形化设置页；内置 vendored schemastery/cosmokit；实时保存 |
+| `0.8.0` | 并发会话清扫延迟、pending 重试、shell 内联参数、`apply_patch` 解析对齐 |
+| `0.7.0` | 适配 DSH 0.2.2 的 `fs/delete-intent` 等新管线变化 |
 
 ## 已知限制
 
