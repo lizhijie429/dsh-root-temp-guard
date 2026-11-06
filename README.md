@@ -15,6 +15,8 @@ DSH Host 插件：在工具调用层拦截"在工作区根目录创建临时目�
 2. **单调守卫层**：`ctx.tools.guard()` 在审批之后、执行之前运行，用工具参数 + 会话**当前工作目录**（`workingDirectory.get(session)`）判定。它是 owner policy，其它插件无法把拒绝改回允许。模型执行 `working_directory { cd: "tmp" }` 后再写 `../_tmp_x`，也会按真实 cwd 解析并拦截。
 3. **已解析目标层**：监听 DSH 的 `fs/write-intent` / `fs/edit-intent` waterfall（`write` / `edit` / `str_replace_editor` / `apply_patch` 都会触发），在 DSH 完成路径解析后、真正写盘前判定。这一层拿到 **realpath 身份**，因此 `tmp/link` 这类 junction/symlink 也无法把根目录临时项藏进允许的 `tmp/` 里。
 4. **回合结束清扫**：监听 `session/event` 的 `turn/start` / `turn/end`，把"本轮新出现、且名字像临时项"的根目录条目**移动**（不删除）到 `tmp/_quarantine/<timestamp>-<name>`，可人工恢复。这是对命令类绕过的兜底：即使某条 shell 命令绕过了启发式，回合结束后根目录也不会留下临时项。turn/start 之前已存在的条目不会被动。
+   - **并发会话安全**：同一 workspace 有多个活跃回合（Agent Teams / workflow / 多窗口）时，清扫会**延迟到最后一个回合结束**再执行（日志 `quarantine.deferred`），避免把其它会话正在用的文件移走；单会话时行为不变。
+   - **截断重试**：单次最多移动 50 个；超出上限或 `rename` 失败的条目会记入 pending，由后续回合继续清扫（日志 `quarantine.truncated` / `quarantine.move-failed`）。
 
 四层都 fail-open：插件内部异常一律放行并写日志，不会卡死工具调用。
 
@@ -58,7 +60,7 @@ tools/pre-execute 提前拒绝 → ctx.tools.guard() 单调守卫 → 执行工�
 - 文件类：`write`、`edit`、`str_replace_editor`（`view` 只读命令放行）、`apply_patch`（解析 `*** Add File:` / `*** Update File:` / `*** Move to:` 的路径；`*** Delete File:` 是删除而非创建，放行），参数层 + fs-intent 层；
 - 命令类：`pwsh`、`bash`、`terminal_send`（`command` / `text`；`workdir` 按当前 cwd 解析，"cd/Set-Location 后的相对名"按新目录解析）。
 
-命令类启发式：命令中出现创建动词（`New-Item`/`mkdir`/`touch`/`Set-Content`/`Add-Content`/`Out-File`/`Copy-Item`/`Move-Item`/`xcopy`/`cp`/`mv`/`tee`/`ln`/`>` 重定向），且某个**路径操作数**解析到根目录下的临时名时拒绝；`-Value`/`-Content` 等自由文本参数会被跳过（避免 `Set-Content -Value "console.log"` 之类误报）。
+命令类启发式：命令中出现创建动词（`New-Item`/`mkdir`/`touch`/`Set-Content`/`Add-Content`/`Out-File`/`Copy-Item`/`Move-Item`/`xcopy`/`cp`/`mv`/`tee`/`ln`/`>` 重定向），且某个**路径操作数**解析到根目录下的临时名时拒绝；`-Value`/`-Content` 等自由文本参数会被跳过（避免 `Set-Content -Value "console.log"` 之类误报）；`-FilePath:_tmp/a`、`--target-directory=_tmp` 这类"参数内嵌值"也会作为路径检查。
 
 默认拒绝文案（可用 `reasonTemplate` 覆盖）：
 
@@ -157,7 +159,7 @@ dsh headless --patch <含 root-temp-guard insert 的 yaml> "hello"
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 56 个用例，含真实文件系统 quarantine 套件
+node --test "test/*.test.mjs"   # 61 个用例，含真实文件系统 quarantine 并发/截断套件
 npm pack --dry-run              # 校验 npm 包内容（含 cordis.patch.yml）
 Get-Content state\root-temp-guard.log
 ```
@@ -194,10 +196,12 @@ Get-Content state\root-temp-guard.log
 - **命令类只跟踪简单 `cd`/`Set-Location`**：`pushd` 栈、变量展开（`$DIR`、`%TEMP%`、`~`）按"未知目标 → 回到根目录基准"处理（deny-biased，可能误伤）；管道子命令里的 cd 不跟踪。
 - **符号链接 / junction**：文件类工具的写盘走 fs-intent 层，用 realpath 身份判定，`tmp/link` 藏根目录临时项会被拒绝；但**命令类**（shell 文本）仍按字面判定，无法感知 junction。普通 UNC 路径（`\\server\share`）被视为工作区外，不干预。
 - **fs-intent 层只覆盖写/编辑类 intent**：`fs/write-intent`、`fs/edit-intent` 覆盖 `write`/`edit`/`str_replace_editor`/`apply_patch`；0.2.2 新增的 `fs/delete-intent` 与 `fs/observed` 不在本插件监听范围（删除不是创建，观测不是变更）。其它插件直接调用 `ctx.fs` 服务（不触发 intent）不在覆盖范围。
-- **只覆盖已知工具与工具管线**：`apply_patch` 已内置；其它新文件工具可通过 `extraWriteTools`（`file_path`/`path` 参数）或 `extraShellTools` 追加，补丁型工具需在代码中按 `input` 解析。
+- **只覆盖已知工具与工具管线**：DSH 内置的 `write`/`edit`/`str_replace_editor`/`apply_patch`/`pwsh`/`bash`/`terminal_send` 默认覆盖；`apply_patch` 已内置；其它新文件工具可通过 `extraWriteTools`（`file_path`/`path` 参数）或 `extraShellTools` 追加，补丁型工具需在代码中按 `input` 解析。
+- **MCP / 第三方插件工具默认不覆盖**：`dsh-mcp-client` 或其它插件注册的任意工具名（如 filesystem MCP 的 `write_file`/`create_directory`）不在默认工具集内；它们通常也不走 `ctx.fs` intent，只能靠回合结束清扫（名称匹配时）或沙箱兜底。需要时用 `extraWriteTools`/`extraShellTools` 显式追加。
+- **PTC `run_code` 内的直接文件系统调用**：嵌套**工具**调用会经过同一策略流水线（守卫生效），但程序代码若直接调用 `fs`（如 `require('fs').mkdirSync`）不经过 `ctx.tools`/`ctx.fs`，插件看不到，只有清扫/沙箱兜底。
 - **agentless 调用不拦截**：没有 session 的调用拿不到工作区上下文，守卫直接放行（fail-open）。
-- **子代理 / workflow / PTC 覆盖未做端到端验证**：机制上走同一注册表，但未集成测试；不要把这条当保证。
-- **清扫只处理"本轮新增"**：turn/start 前已存在的临时目录不会被动；baseline 读取失败时整轮跳过；移动而非删除（`tmp/_quarantine/` 可恢复）；每轮最多移动 50 个；`mode: warn` 下只记 `would-move` 不移动。清扫发生在 turn/end：若某后台进程仍在写该目录，重命名可能失败并记录 `quarantine.move-failed`。
+- **子代理 / workflow / PTC 覆盖未做端到端验证**：机制上走同一注册表，但未集成测试；不要把这条当保证（并发会话的清扫已按 root 延迟到最后回合，见"四层拦截"）。
+- **清扫语义**：turn/start 前已存在的临时目录不会被动；baseline 读取失败时跳过该 root；移动而非删除（`tmp/_quarantine/` 可恢复）；单次最多移动 50 个，超出/失败项进入 pending 由后续回合重试（最多记 500 个/root）；`mode: warn` 下只记 `would-move` 不移动。若某后台进程仍在写该目录，重命名可能失败并记录 `quarantine.move-failed`（同样进入 pending）。
 - **日志**：挂载时轮转一次（>5MB → `.1`），运行期间不轮转；写失败被吞。
 - **fail-open**：内部异常放行并记录 `guard.error` / `pre-execute.error` / `fs-intent.error`。
 

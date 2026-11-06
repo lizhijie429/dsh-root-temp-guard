@@ -65,6 +65,12 @@ export function apply(ctx, rawConfig) {
       }
     }
 
+    if (!config.enabled) {
+      // Total off switch: no gate, no fs listener, no quarantine watcher.
+      log(`plugin.mounted pid=${process.pid} enabled=false`)
+      return
+    }
+
     /** Canonical workspace roots, realpath-ed once per distinct root. */
     const canonicalRoots = new Map()
     const canonicalRootOf = root => {
@@ -132,10 +138,11 @@ export function apply(ctx, rawConfig) {
       try {
         const { root, cwd } = resolveContext(exec)
         const reason = evaluate(exec, config, { root, cwd })
-        if (reason !== undefined) {
+        if (reason !== undefined && config.mode !== 'warn') {
           log(`deny source=tool stage=pre tool=${forLog(exec?.name)} reason=${forLog(reason)}`)
-          if (config.mode !== 'warn') return { kind: 'deny', reason }
+          return { kind: 'deny', reason }
         }
+        // warn mode logs through the monotonic guard below (one line per call).
       } catch (error) {
         log(`pre-execute.error ${forLog(error?.message ?? error)}`)
       }
@@ -170,8 +177,10 @@ export function apply(ctx, rawConfig) {
       // plugin's fiber, so a reload/HMR drops the old guard before mounting again.
       ctx.effect(register, 'root-temp-guard')
     } else {
-      const off = register()
-      if (typeof ctx.on === 'function') ctx.on('dispose', off)
+      // Cordis always provides ctx.effect; keep the guard registered rather than
+      // inventing a non-existent `dispose` event just to dispose it.
+      register()
+      log('plugin.effect-unavailable')
     }
 
     // Second layer: resolved-target waterfalls, prepended so a denial vetoes the

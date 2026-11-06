@@ -100,6 +100,43 @@ test('quarantine: dispose clears pending turns', async t => {
   assert.equal(await exists(path.join(root, '_tmp_new')), true)
 })
 
+test('quarantine: concurrent sessions on one root defer the sweep to the last turn', async t => {
+  const root = await fixture(t)
+  const { watcher, session } = makeWatcher(root)
+  const other = { id: 'session-other', header: { cwd: root } }
+
+  await watcher.onSessionEvent(session, event('turn/start'))
+  await watcher.onSessionEvent(other, event('turn/start'))
+  await mkdir(path.join(root, '_tmp_other'))
+
+  // The first turn ends: another session still owns the root, so nothing moves.
+  await watcher.onSessionEvent(session, event('turn/end'))
+  assert.equal(await exists(path.join(root, '_tmp_other')), true)
+
+  // The last turn ends: the sweep runs once, against the shared baseline.
+  await watcher.onSessionEvent(other, event('turn/end'))
+  assert.equal(await exists(path.join(root, '_tmp_other')), false)
+  const moved = await readdir(path.join(root, 'tmp', '_quarantine'))
+  assert.equal(moved.some(name => name.endsWith('_tmp_other')), true)
+})
+
+test('quarantine: leftovers over the per-sweep cap are retried by the next sweep', async t => {
+  const root = await fixture(t)
+  const { watcher, session } = makeWatcher(root)
+  await watcher.onSessionEvent(session, event('turn/start'))
+  for (let index = 0; index < 60; index++) await mkdir(path.join(root, `_tmp_n${index}`))
+  await watcher.onSessionEvent(session, event('turn/end'))
+
+  assert.equal((await readdir(path.join(root, 'tmp', '_quarantine'))).length, 50)
+  assert.equal((await readdir(root)).filter(name => name.startsWith('_tmp_n')).length, 10)
+
+  await watcher.onSessionEvent(session, event('turn/start'))
+  await watcher.onSessionEvent(session, event('turn/end'))
+
+  assert.equal((await readdir(root)).filter(name => name.startsWith('_tmp_n')).length, 0)
+  assert.equal((await readdir(path.join(root, 'tmp', '_quarantine'))).length, 60)
+})
+
 async function exists(target) {
   try {
     const { stat } = await import('node:fs/promises')

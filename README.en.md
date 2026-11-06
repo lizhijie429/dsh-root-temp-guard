@@ -15,6 +15,8 @@ A DSH host plugin that intercepts tool calls creating temporary directories/file
 2. **Monotonic guard layer**: `ctx.tools.guard()` runs after approval and before execution, evaluating the arguments together with the session's **current working directory** (`workingDirectory.get(session)`). It is an owner policy, so another plugin cannot turn its denial back into an allow. If the model runs `working_directory { cd: "tmp" }` and then writes `../_tmp_x`, the path is resolved against the real cwd and still denied.
 3. **Resolved-target layer**: listens to DSH's `fs/write-intent` / `fs/edit-intent` waterfalls (emitted by `write`, `edit`, `str_replace_editor` and `apply_patch`) and decides after DSH resolved the path but before the write happens. This layer has the **realpath identity**, so a junction/symlink such as `tmp/link` cannot hide a root-level temp entry under the allowed `tmp/`.
 4. **Turn-end sweep**: listens to `session/event` (`turn/start` / `turn/end`) and **moves** (never deletes) root entries that are new in this turn and look like temp artifacts into `tmp/_quarantine/<timestamp>-<name>`, where they can be recovered manually. This is the backstop for shell bypasses: even if a shell command slips past the heuristic, the root does not keep a temp entry after the turn. Entries that existed before `turn/start` are never touched.
+   - **Concurrent sessions**: when several sessions have an active turn on the same workspace root (Agent Teams / workflow / multiple windows), the sweep is **deferred until the last active turn ends** (`quarantine.deferred`), so another session's files are not moved mid-turn; single-session behavior is unchanged.
+   - **Truncation retry**: at most 50 entries are moved per sweep; entries over the cap or whose `rename` failed are remembered as pending and retried by later sweeps (`quarantine.truncated` / `quarantine.move-failed`).
 
 All four layers are fail-open: internal errors allow the call and are logged, so they never wedge the tool pipeline.
 
@@ -58,7 +60,7 @@ Covered tools:
 - File tools: `write`, `edit`, `str_replace_editor` (the read-only `view` command is allowed), `apply_patch` (paths from `*** Add File:`, `*** Update File:` and `*** Move to:` are checked; `*** Delete File:` is a deletion, not a creation, and stays allowed) — argument layer + fs-intent layer.
 - Shell tools: `pwsh`, `bash`, `terminal_send` (`command` / `text`; `workdir` is resolved against the current cwd, and relative names after `cd`/`Set-Location` use the new directory).
 
-Shell heuristic: when the command contains a creation verb (`New-Item`/`mkdir`/`touch`/`Set-Content`/`Add-Content`/`Out-File`/`Copy-Item`/`Move-Item`/`xcopy`/`cp`/`mv`/`tee`/`ln`/`>` redirection) and one of its **path operands** resolves to a root-level temp name, the call is denied. Free-text arguments such as `-Value`/`-Content` are skipped to avoid false positives like `Set-Content -Value "console.log"`.
+Shell heuristic: when the command contains a creation verb (`New-Item`/`mkdir`/`touch`/`Set-Content`/`Add-Content`/`Out-File`/`Copy-Item`/`Move-Item`/`xcopy`/`cp`/`mv`/`tee`/`ln`/`>` redirection) and one of its **path operands** resolves to a root-level temp name, the call is denied. Free-text arguments such as `-Value`/`-Content` are skipped to avoid false positives like `Set-Content -Value "console.log"`; inline operands such as `-FilePath:_tmp/a` and `--target-directory=_tmp` are inspected as paths too.
 
 Default denial text (overridable with `reasonTemplate`):
 
@@ -157,7 +159,7 @@ dsh headless --patch <yaml containing the root-temp-guard insert> "hello"
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 56 cases, including a real-filesystem quarantine suite
+node --test "test/*.test.mjs"   # 61 cases, including real-filesystem quarantine concurrency/truncation suites
 npm pack --dry-run              # validate npm package contents (includes cordis.patch.yml)
 Get-Content state\root-temp-guard.log
 ```
@@ -194,10 +196,12 @@ Community directories:
 - **Shell checks only track simple `cd`/`Set-Location`**: `pushd` stacks and variable expansion (`$DIR`, `%TEMP%`, `~`) fall back to the workspace-root base (deny-biased, may cause false positives); `cd` inside pipeline subcommands is not tracked.
 - **Symlinks / junctions**: file-tool writes go through the fs-intent layer and are judged by realpath identity, so a root temp entry hidden behind `tmp/link` is denied; **shell text** is still matched literally and cannot see junctions. Plain UNC paths (`\\server\share`) are treated as outside the workspace and left alone.
 - **The fs-intent layer only covers write/edit intents**: `fs/write-intent` and `fs/edit-intent` cover `write`/`edit`/`str_replace_editor`/`apply_patch`; the 0.2.2 `fs/delete-intent` and `fs/observed` events are not observed here (deletion is not creation, observation is not mutation). Other plugins calling the `ctx.fs` service directly (no intent event) are not covered.
-- **Only known tools/pipelines are covered**: new tools can be added via `extraWriteTools`/`extraShellTools`.
+- **Only known tools/pipelines are covered**: built-ins `write`/`edit`/`str_replace_editor`/`apply_patch`/`pwsh`/`bash`/`terminal_send` are covered by default; new path-shaped tools can be added via `extraWriteTools` and new shell tools via `extraShellTools`; patch-shaped third-party tools need parser support in code.
+- **MCP / third-party plugin tools are not covered by default**: arbitrary tool names registered by `dsh-mcp-client` or other plugins (e.g. a filesystem MCP's `write_file`/`create_directory`) are outside the default sets, and they usually do not go through `ctx.fs` intents either, so only the turn-end sweep (when the name matches) or the sandbox stops them. Add them explicitly with `extraWriteTools`/`extraShellTools` when needed.
+- **Direct filesystem calls inside PTC `run_code` programs**: nested **tool** calls go through the same policy pipeline (guarded), but code that calls `fs` directly (e.g. `require('fs').mkdirSync`) bypasses `ctx.tools`/`ctx.fs` and is only covered by the sweep/sandbox.
 - **Agentless calls are not checked**: without a session there is no workspace context, so the guard allows the call (fail-open).
-- **Subagent / workflow / PTC coverage is not end-to-end tested**: they share the same registry in principle, but there is no integration test yet; do not treat it as a guarantee.
-- **The sweep only handles entries new in the turn**: temp directories that already existed before `turn/start` are untouched; when the baseline read fails the whole turn is skipped; entries are moved (recoverable under `tmp/_quarantine/`), at most 50 per turn; in `mode: warn` only `would-move` is logged. The sweep runs at `turn/end`: if a background process still writes into the directory, the rename can fail and is logged as `quarantine.move-failed`.
+- **Subagent / workflow / PTC coverage is not end-to-end tested**: they share the same registry in principle, but there is no integration test yet; do not treat it as a guarantee. (Concurrent sessions are handled by deferring the sweep per root until the last turn, see "Four enforcement layers".)
+- **Sweep semantics**: temp directories that already existed before `turn/start` are untouched; when the baseline read fails that root is skipped; entries are moved (recoverable under `tmp/_quarantine/`), at most 50 per sweep, and entries over the cap or whose rename failed become pending and are retried by later sweeps (up to 500 remembered per root); in `mode: warn` only `would-move` is logged. If a background process still writes into the directory, the rename can fail and is logged as `quarantine.move-failed` (also retried).
 - **Logging**: rotated once at mount (>5 MB → `.1`), not rotated while running; write failures are swallowed.
 - **Fail-open**: internal errors allow the call and are logged as `guard.error` / `pre-execute.error` / `fs-intent.error`.
 

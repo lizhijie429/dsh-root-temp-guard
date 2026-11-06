@@ -238,6 +238,16 @@ test('extraWriteTools / extraShellTools extend the covered tool set', () => {
   assert.match(check('run_cmd', { command: 'mkdir _tmp_y' }, ROOT, cfg), /_tmp_y/)
 })
 
+test('shell: PowerShell -Param:value and GNU --opt=value operands are inspected', () => {
+  assert.match(check('pwsh', { command: 'Set-Content -FilePath:_tmp_colon/a.txt hi' }), /_tmp_colon/)
+  assert.match(check('pwsh', { command: 'Copy-Item a.txt -Destination:_tmp_dest' }), /_tmp_dest/)
+  assert.match(check('bash', { command: 'cp a.txt --target-directory=_tmp_td' }), /_tmp_td/)
+  // Content/value parameters stay free text: no false positive.
+  assert.equal(check('pwsh', { command: 'Set-Content -Path docs/a.md -Value:console.log' }), undefined)
+  // A legitimate inline destination stays allowed.
+  assert.equal(check('bash', { command: 'cp a.txt --target-directory=tmp/20261106-x' }), undefined)
+})
+
 test('very long names are still classified without unbounded regex cost', () => {
   const longName = '_tmp_' + 'a'.repeat(4096)
   assert.match(check('write', { file_path: `${longName}/x.txt` }), /_tmp_/)
@@ -268,12 +278,23 @@ test('apply_patch: paths resolve against the current working directory', () => {
   assert.match(check('apply_patch', { input: patch }, path.join(ROOT, 'tmp')), /_tmp_x/)
 })
 
-test('apply_patch: path extraction keeps spaces/quotes and object-form input', () => {
+test('apply_patch: path extraction keeps spaces, literal quotes and object-form input', () => {
   const patch =
     '*** Begin Patch\n*** Add File: "docs/with space.md"\n+x\n*** Update File: docs/a.md\n*** Move to: "tmp/_tmp_moved"\n*** End Patch'
-  assert.deepEqual(applyPatchPaths(patch), ['docs/with space.md', 'docs/a.md', 'tmp/_tmp_moved'])
+  // DSH keeps quotes literally (dsh-fs-patch does not unquote), so do we.
+  assert.deepEqual(applyPatchPaths(patch), ['"docs/with space.md"', 'docs/a.md', '"tmp/_tmp_moved"'])
   assert.deepEqual(applyPatchPaths('*** Delete File: _tmp_x/a.txt\n*** End Patch'), [])
   assert.equal(check('apply_patch', { input: '' }), undefined)
   assert.equal(check('apply_patch', {}), undefined)
+})
+
+test('apply_patch: leading whitespace on Add/Update headers is matched like DSH', () => {
+  const add = '*** Begin Patch\n  *** Add File: _tmp_indent/a.txt\n+x\n*** End Patch'
+  assert.match(check('apply_patch', { input: add }), /_tmp_indent/)
+  const update = '*** Begin Patch\n\t*** Update File: _tmp_tab/f.txt\n@@\n-a\n+b\n*** End Patch'
+  assert.match(check('apply_patch', { input: update }), /_tmp_tab/)
+  // DSH keeps leading whitespace for a Move-to line and rejects it, so we do not
+  // treat an indented Move-to as a real destination.
+  assert.deepEqual(applyPatchPaths('*** Update File: docs/a.md\n  *** Move to: _tmp_x/a\n*** End Patch'), ['docs/a.md'])
 })
 

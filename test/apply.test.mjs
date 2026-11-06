@@ -165,6 +165,12 @@ test('lifecycle: registers through ctx.effect and disposes the guard with the pl
   assert.equal(events.filter(name => name === 'unregistered').length, 1)
 })
 
+test('enabled:false disables every layer, including the quarantine watcher', () => {
+  const { guard, listeners } = mount({ config: { enabled: false } })
+  assert.equal(guard, undefined)
+  assert.deepEqual(Object.keys(listeners), [])
+})
+
 test('0.2.2: tools/pre-execute denies temp creation before the approval prompt', async () => {
   const { listeners } = mount()
   const pre = listeners['tools/pre-execute']?.[0]
