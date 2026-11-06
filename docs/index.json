@@ -36,16 +36,16 @@
         ]
       },
       "dist-tags": {
-        "latest": "0.8.0"
+        "latest": "0.9.0"
       },
       "versions": [
         {
-          "version": "0.8.0",
-          "publishTimestamp": 1793937721,
+          "version": "0.9.0",
+          "publishTimestamp": 1793939225,
           "source": {
             "type": "git",
             "url": "https://github.com/lizhijie429/dsh-root-temp-guard",
-            "commit": "c11308393ce23ceb95139f91b1a8942b1e0b75c6"
+            "commit": "dcff66bf6069beadde2bc90d4902c7fc90e413eb"
           },
           "engines": {
             "dsh": ">=0.2.1-0 <0.3.0"
