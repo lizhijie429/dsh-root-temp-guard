@@ -7,15 +7,18 @@
 
 DSH Host 插件：在工具调用层拦截"在工作区根目录创建临时目录 / 临时文件"，把"临时产物统一放临时目录"的项目约定从**文字规则**升级为**执行期拦截**。
 
-> ⚠️ **定位说明**：这是一个**卫生/约定守卫**，不是安全边界。文件类工具走两层判定（工具参数 + 已解析目标），命令类只做启发式文本匹配。不要依赖它防御恶意行为——真正的边界是 DSH 沙箱。
+> ⚠️ **定位说明**：这是一个**卫生/约定守卫**，不是安全边界。文件类工具走参数层（提前拒绝 + 单调守卫）与已解析目标层，命令类只做启发式文本匹配。不要依赖它防御恶意行为——真正的边界是 DSH 沙箱。
 
-## 三层拦截
+## 四层拦截
 
-1. **工具参数层**：`ctx.tools.guard()` 在工具执行前运行，用工具参数 + 会话**当前工作目录**（`workingDirectory.get(session)`）判定。模型执行 `working_directory { cd: "tmp" }` 后再写 `../_tmp_x`，也会按真实 cwd 解析并拦截。
-2. **已解析目标层**：监听 DSH 的 `fs/write-intent` / `fs/edit-intent` waterfall（`write` / `edit` / `str_replace_editor` 都会触发），在 DSH 完成路径解析后、真正写盘前判定。这一层拿到 **realpath 身份**，因此 `tmp/link` 这类 junction/symlink 也无法把根目录临时项藏进允许的 `tmp/` 里。
-3. **回合结束清扫**：监听 `session/event` 的 `turn/start` / `turn/end`，把"本轮新出现、且名字像临时项"的根目录条目**移动**（不删除）到 `tmp/_quarantine/<timestamp>-<name>`，可人工恢复。这是对命令类绕过的兜底：即使某条 shell 命令绕过了启发式，回合结束后根目录也不会留下临时项。turn/start 之前已存在的条目不会被动。
+1. **提前拒绝层**（DSH 0.2.2+）：`tools/pre-execute` 在**审批之前**运行，命中临时项时直接返回 `deny`，不会先弹审批再拒绝；`warn` 模式下只记 `stage=pre` 日志并继续。
+2. **单调守卫层**：`ctx.tools.guard()` 在审批之后、执行之前运行，用工具参数 + 会话**当前工作目录**（`workingDirectory.get(session)`）判定。它是 owner policy，其它插件无法把拒绝改回允许。模型执行 `working_directory { cd: "tmp" }` 后再写 `../_tmp_x`，也会按真实 cwd 解析并拦截。
+3. **已解析目标层**：监听 DSH 的 `fs/write-intent` / `fs/edit-intent` waterfall（`write` / `edit` / `str_replace_editor` / `apply_patch` 都会触发），在 DSH 完成路径解析后、真正写盘前判定。这一层拿到 **realpath 身份**，因此 `tmp/link` 这类 junction/symlink 也无法把根目录临时项藏进允许的 `tmp/` 里。
+4. **回合结束清扫**：监听 `session/event` 的 `turn/start` / `turn/end`，把"本轮新出现、且名字像临时项"的根目录条目**移动**（不删除）到 `tmp/_quarantine/<timestamp>-<name>`，可人工恢复。这是对命令类绕过的兜底：即使某条 shell 命令绕过了启发式，回合结束后根目录也不会留下临时项。turn/start 之前已存在的条目不会被动。
 
-三层都 fail-open：插件内部异常一律放行并写日志，不会卡死工具调用。
+四层都 fail-open：插件内部异常一律放行并写日志，不会卡死工具调用。
+
+**兼容性**：已在 DSH `0.2.2-rc.1` 上验证；`engines.dsh` 保持 `>=0.2.1-0 <0.3.0`，0.2.2 新增的 `apply_patch` 工具自动纳入覆盖，0.2.1 及更早版本缺少该工具时不受影响。
 
 ## 通用性
 
@@ -30,11 +33,11 @@ DSH Host 插件：在工具调用层拦截"在工作区根目录创建临时目�
 DSH 工具执行管线：
 
 ```text
-tools/pre-execute → ctx.tools.guard() 单调守卫 → 执行工具
-   write/edit/str_replace_editor: fs.resolve → fs/write-intent | fs/edit-intent waterfall → ctx.fs 写盘
+tools/pre-execute 提前拒绝 → ctx.tools.guard() 单调守卫 → 执行工具
+   write/edit/str_replace_editor/apply_patch: fs.resolve → fs/write-intent | fs/edit-intent waterfall → ctx.fs 写盘
 ```
 
-- 工具守卫通过 `ctx.effect()` 注册，插件卸载/热重载时自动注销；
+- 提前拒绝层与单调守卫层都通过 `ctx.effect()` 注册，插件卸载/热重载时自动注销；
 - waterfall 监听器用 `ctx.on(..., { prepend: true })` 注册，拒绝时抛错并短路后续监听器；
 - 对所有 agent 生效，子代理 / workflow / PTC `run_code` 的内部工具调用走同一注册表（**未做端到端集成验证**，见"已知限制"）。
 
@@ -44,13 +47,15 @@ tools/pre-execute → ctx.tools.guard() 单调守卫 → 执行工具
 | --- | --- | --- |
 | 根目录临时目录（含其下层路径） | `_tmp_probe/x.txt`、`tmp_lead/log.txt`、`.tmp/`、`.._tmp/`、`scratch/`、`test-out/` | 拒绝 |
 | 根目录临时文件 | `_tmp_notes.md`、`build.log`、`x.tmp`、`x.bak`、`.log` | 拒绝 |
+| `apply_patch` 补丁目标 | `*** Add File: _tmp_probe/a.txt`、`*** Move to: tmp_lead/b.md` | 拒绝 |
+| `apply_patch` 删除 | `*** Delete File: build.log` | 允许（删除不是创建） |
 | 配置的统一临时目录 | `tmp/20261103-dialog-design/a.txt`（`tmpDirName: tmp`） | 允许 |
 | 正常仓库路径 | `AGENTS.md`、`docs/01-x.md`、`backend/pom.xml` | 允许 |
 | 工作区外路径 | `../other/...`、其他盘符 | 不干预（交给沙箱策略） |
 
 覆盖工具：
 
-- 文件类：`write`、`edit`、`str_replace_editor`（`view` 只读命令放行），工具参数层 + fs-intent 层；
+- 文件类：`write`、`edit`、`str_replace_editor`（`view` 只读命令放行）、`apply_patch`（解析 `*** Add File:` / `*** Update File:` / `*** Move to:` 的路径；`*** Delete File:` 是删除而非创建，放行），参数层 + fs-intent 层；
 - 命令类：`pwsh`、`bash`、`terminal_send`（`command` / `text`；`workdir` 按当前 cwd 解析，"cd/Set-Location 后的相对名"按新目录解析）。
 
 命令类启发式：命令中出现创建动词（`New-Item`/`mkdir`/`touch`/`Set-Content`/`Add-Content`/`Out-File`/`Copy-Item`/`Move-Item`/`xcopy`/`cp`/`mv`/`tee`/`ln`/`>` 重定向），且某个**路径操作数**解析到根目录下的临时名时拒绝；`-Value`/`-Content` 等自由文本参数会被跳过（避免 `Set-Content -Value "console.log"` 之类误报）。
@@ -152,7 +157,7 @@ dsh headless --patch <含 root-temp-guard insert 的 yaml> "hello"
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 49 个用例，含真实文件系统 quarantine 套件
+node --test "test/*.test.mjs"   # 56 个用例，含真实文件系统 quarantine 套件
 npm pack --dry-run              # 校验 npm 包内容（含 cordis.patch.yml）
 Get-Content state\root-temp-guard.log
 ```
@@ -188,13 +193,13 @@ Get-Content state\root-temp-guard.log
 - **不是安全边界**：命令类是启发式文本匹配，`node -e "fs.mkdirSync(...)"`、`xcopy`/`robocopy`、shell 变量/函数/别名、PowerShell 管道拼接、脚本内部间接建目录均可绕过。
 - **命令类只跟踪简单 `cd`/`Set-Location`**：`pushd` 栈、变量展开（`$DIR`、`%TEMP%`、`~`）按"未知目标 → 回到根目录基准"处理（deny-biased，可能误伤）；管道子命令里的 cd 不跟踪。
 - **符号链接 / junction**：文件类工具的写盘走 fs-intent 层，用 realpath 身份判定，`tmp/link` 藏根目录临时项会被拒绝；但**命令类**（shell 文本）仍按字面判定，无法感知 junction。普通 UNC 路径（`\\server\share`）被视为工作区外，不干预。
-- **fs-intent 层只覆盖经 `write`/`edit`/`str_replace_editor` 的写**：其它插件直接调用 `ctx.fs` 服务（不触发 intent）不在覆盖范围。
-- **只覆盖已知工具与工具管线**：新工具可通过 `extraWriteTools`/`extraShellTools` 追加。
+- **fs-intent 层只覆盖写/编辑类 intent**：`fs/write-intent`、`fs/edit-intent` 覆盖 `write`/`edit`/`str_replace_editor`/`apply_patch`；0.2.2 新增的 `fs/delete-intent` 与 `fs/observed` 不在本插件监听范围（删除不是创建，观测不是变更）。其它插件直接调用 `ctx.fs` 服务（不触发 intent）不在覆盖范围。
+- **只覆盖已知工具与工具管线**：`apply_patch` 已内置；其它新文件工具可通过 `extraWriteTools`（`file_path`/`path` 参数）或 `extraShellTools` 追加，补丁型工具需在代码中按 `input` 解析。
 - **agentless 调用不拦截**：没有 session 的调用拿不到工作区上下文，守卫直接放行（fail-open）。
 - **子代理 / workflow / PTC 覆盖未做端到端验证**：机制上走同一注册表，但未集成测试；不要把这条当保证。
 - **清扫只处理"本轮新增"**：turn/start 前已存在的临时目录不会被动；baseline 读取失败时整轮跳过；移动而非删除（`tmp/_quarantine/` 可恢复）；每轮最多移动 50 个；`mode: warn` 下只记 `would-move` 不移动。清扫发生在 turn/end：若某后台进程仍在写该目录，重命名可能失败并记录 `quarantine.move-failed`。
 - **日志**：挂载时轮转一次（>5MB → `.1`），运行期间不轮转；写失败被吞。
-- **fail-open**：内部异常放行并记录 `guard.error` / `fs-intent.error`。
+- **fail-open**：内部异常放行并记录 `guard.error` / `pre-execute.error` / `fs-intent.error`。
 
 ## 卸载
 

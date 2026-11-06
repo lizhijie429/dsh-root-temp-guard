@@ -164,3 +164,31 @@ test('lifecycle: registers through ctx.effect and disposes the guard with the pl
   }
   assert.equal(events.filter(name => name === 'unregistered').length, 1)
 })
+
+test('0.2.2: tools/pre-execute denies temp creation before the approval prompt', async () => {
+  const { listeners } = mount()
+  const pre = listeners['tools/pre-execute']?.[0]
+  assert.equal(typeof pre, 'function')
+
+  const deny = pre(exec('write', { file_path: '_tmp_x/a.txt' }), () => Promise.resolve({ kind: 'allow' }))
+  assert.equal(deny.kind, 'deny')
+  assert.match(deny.reason, /_tmp_x/)
+
+  const allow = await pre(exec('write', { file_path: 'docs/a.md' }), () => Promise.resolve({ kind: 'allow' }))
+  assert.deepEqual(allow, { kind: 'allow' })
+})
+
+test('0.2.2: pre-execute honors warn mode; guard still covers apply_patch', async () => {
+  const pre = mount({ config: { mode: 'warn' } }).listeners['tools/pre-execute'][0]
+  let nextCalled = false
+  const warned = await pre(exec('write', { file_path: '_tmp_x/a.txt' }), () => {
+    nextCalled = true
+    return { kind: 'allow' }
+  })
+  assert.deepEqual(warned, { kind: 'allow' })
+  assert.equal(nextCalled, true)
+
+  const { guard } = mount()
+  const patch = '*** Begin Patch\n*** Add File: _tmp_probe/x.txt\n+1\n*** End Patch'
+  assert.match(guard(exec('apply_patch', { input: patch })), /_tmp_probe/)
+})

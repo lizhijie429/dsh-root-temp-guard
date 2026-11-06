@@ -2,12 +2,16 @@
  * dsh-root-temp-guard — a DSH Host plugin that hard-blocks tool calls creating
  * temporary directories/files directly in the workspace root.
  *
- * Two enforcement layers, both config-driven and project-agnostic:
- *   1. `ctx.tools.guard()` — before a tool runs, from the tool arguments and the
- *      session's current working directory (`workingDirectory.get(session)`);
+ * Four enforcement layers, both config-driven and project-agnostic:
+ *   0. `tools/pre-execute` (DSH 0.2.2+) — deny BEFORE the approval prompt, so a
+ *      temp-creating call is rejected instead of asking the user first;
+ *   1. `ctx.tools.guard()` — monotonic owner policy after approval, from the
+ *      tool arguments and the session's current working directory
+ *      (`workingDirectory.get(session)`); other policies cannot override it;
  *   2. `fs/write-intent` / `fs/edit-intent` waterfalls — after DSH resolved the
  *      target path (cwd applied, realpath identity known), so symlinks/junctions
- *      under an allowed temp dir cannot hide a root-level temp entry.
+ *      under an allowed temp dir cannot hide a root-level temp entry;
+ *   3. turn-end quarantine sweep (`session/event`) for shell bypasses.
  *
  * Root boundary comes from the session (`sandboxPolicy`), unless the deployment
  * pins it with `config.workspaceRoot`; temp dir name, deny patterns, denied
@@ -116,15 +120,44 @@ export function apply(ctx, rawConfig) {
       }
     }
 
-    /** Register the tool guard; the returned disposer is idempotent. */
+    /**
+     * Early gate: `tools/pre-execute` runs before approval resolution (DSH
+     * 0.2.2 pipeline), so denying here avoids a pointless approval prompt. The
+     * monotonic `guard` below stays the authority; this layer only short-cuts.
+     * @param {any} exec
+     * @param {() => Promise<any>} next
+     */
+    const preExecute = (exec, next) => {
+      const advance = () => (typeof next === 'function' ? next() : undefined)
+      try {
+        const { root, cwd } = resolveContext(exec)
+        const reason = evaluate(exec, config, { root, cwd })
+        if (reason !== undefined) {
+          log(`deny source=tool stage=pre tool=${forLog(exec?.name)} reason=${forLog(reason)}`)
+          if (config.mode !== 'warn') return { kind: 'deny', reason }
+        }
+      } catch (error) {
+        log(`pre-execute.error ${forLog(error?.message ?? error)}`)
+      }
+      return advance()
+    }
+
+    /** Register both tool gates; the returned disposer is idempotent. */
     const register = () => {
-      const off = ctx.tools.guard(guard)
+      const offGuard = ctx.tools.guard(guard)
+      const offPre =
+        typeof ctx.on === 'function' ? ctx.on('tools/pre-execute', preExecute) : undefined
       let disposed = false
       return () => {
         if (disposed) return
         disposed = true
         try {
-          off()
+          if (typeof offPre === 'function') offPre()
+        } catch {
+          /* disposal is best effort */
+        }
+        try {
+          offGuard()
         } catch {
           /* disposal is best effort */
         }

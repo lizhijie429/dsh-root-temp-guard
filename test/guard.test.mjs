@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { evaluate, evaluateTarget, normalizeConfig } from '../lib/guard.mjs'
+import { evaluate, evaluateTarget, applyPatchPaths, normalizeConfig } from '../lib/guard.mjs'
 
 const PLUGIN_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 const IS_WIN = process.platform === 'win32'
@@ -241,5 +241,39 @@ test('extraWriteTools / extraShellTools extend the covered tool set', () => {
 test('very long names are still classified without unbounded regex cost', () => {
   const longName = '_tmp_' + 'a'.repeat(4096)
   assert.match(check('write', { file_path: `${longName}/x.txt` }), /_tmp_/)
+})
+
+test('apply_patch (DSH 0.2.2+): Add/Update/Move paths obey the same root rule', () => {
+  const add = '*** Begin Patch\n*** Add File: _tmp_probe/a.txt\n+hi\n*** End Patch'
+  assert.match(check('apply_patch', { input: add }), /_tmp_probe/)
+
+  const update = '*** Begin Patch\n*** Update File: _tmp_x/f.txt\n@@\n-old\n+new\n*** End Patch'
+  assert.match(check('apply_patch', { input: update }), /_tmp_x/)
+
+  const move = '*** Begin Patch\n*** Update File: docs/a.md\n*** Move to: tmp_moved/b.md\n*** End Patch'
+  assert.match(check('apply_patch', { input: move }), /tmp_moved/)
+
+  const ok = '*** Begin Patch\n*** Add File: tmp/20261106-task/a.txt\n+hi\n*** End Patch'
+  assert.equal(check('apply_patch', { input: ok }), undefined)
+})
+
+test('apply_patch: Delete File is not creation and stays allowed', () => {
+  const del = '*** Begin Patch\n*** Delete File: build.log\n*** End Patch'
+  assert.equal(check('apply_patch', { input: del }), undefined)
+  assert.deepEqual(applyPatchPaths(del), [])
+})
+
+test('apply_patch: paths resolve against the current working directory', () => {
+  const patch = '*** Begin Patch\n*** Add File: ../_tmp_x/a.txt\n+hi\n*** End Patch'
+  assert.match(check('apply_patch', { input: patch }, path.join(ROOT, 'tmp')), /_tmp_x/)
+})
+
+test('apply_patch: path extraction keeps spaces/quotes and object-form input', () => {
+  const patch =
+    '*** Begin Patch\n*** Add File: "docs/with space.md"\n+x\n*** Update File: docs/a.md\n*** Move to: "tmp/_tmp_moved"\n*** End Patch'
+  assert.deepEqual(applyPatchPaths(patch), ['docs/with space.md', 'docs/a.md', 'tmp/_tmp_moved'])
+  assert.deepEqual(applyPatchPaths('*** Delete File: _tmp_x/a.txt\n*** End Patch'), [])
+  assert.equal(check('apply_patch', { input: '' }), undefined)
+  assert.equal(check('apply_patch', {}), undefined)
 })
 
