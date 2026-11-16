@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     strategy:
@@ -17,7 +24,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - name: Run unit tests
-        run: node --test "test/*.test.mjs"
-      - name: Validate npm package contents
-        run: npm pack --dry-run
+      # No install step: the plugin has no dependencies and ships the vendored
+      # schemastery/cosmokit copies in the repository.
+      - name: Unit tests
+        run: npm test
+      - name: Validate the packed file list
+        run: npm run pack:check

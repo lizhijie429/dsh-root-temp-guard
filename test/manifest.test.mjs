@@ -25,11 +25,17 @@ const TEXT_FILES = [
   'docs/index.json',
   'docs/index.html',
   'scripts/update-market-index.mjs',
+  'scripts/check-pack.mjs',
   'README.md',
   'README.en.md',
   'LICENSE',
   '.gitattributes',
   '.gitignore',
+  '.npmignore',
+  '.editorconfig',
+  '.nvmrc',
+  '.github/workflows/test.yml',
+  '.github/workflows/publish.yml',
   'test/guard.test.mjs',
   'test/apply.test.mjs',
   'test/quarantine.test.mjs',
@@ -93,6 +99,43 @@ test('manifest exposes the display metadata the Plugin Manager reads', () => {
     assert.equal(typeof meta?.title === 'string' && meta.title.length > 0, true, `${locale} meta.title`)
     assert.equal(typeof meta?.description === 'string' && meta.description.length > 0, true, `${locale} meta.description`)
   }
+})
+
+test('release gate: prepublishOnly runs the tests and the pack check', () => {
+  const pkg = JSON.parse(readFileSync(`${ROOT}/package.json`, 'utf8'))
+  assert.equal(pkg.scripts?.prepublishOnly, 'npm run verify')
+  assert.equal(pkg.scripts?.verify, 'npm run test && npm run pack:check')
+  assert.equal(pkg.scripts?.['pack:check'], 'node scripts/check-pack.mjs')
+
+  // The gate must exist, ask npm for the real list, and stay out of the tarball.
+  const gate = readFileSync(`${ROOT}/scripts/check-pack.mjs`, 'utf8')
+  assert.match(gate, /--dry-run/)
+  assert.match(gate, /--json/)
+  assert.equal(pkg.files.includes('scripts'), false)
+  assert.equal(pkg.files.includes('scripts/check-pack.mjs'), false)
+
+  // npm only understands node/npm engines; the DSH range stays authoritative for DSH.
+  assert.equal(pkg.engines?.node, '>=20')
+  assert.equal(pkg.engines?.dsh, '>=0.2.1-0 <0.3.0')
+  // The browser half registers itself into `__ModuleLoader__`, so it is not side-effect free.
+  assert.equal(Array.isArray(pkg.sideEffects) && pkg.sideEffects.includes('./lib/client.js'), true)
+})
+
+test('ci workflows run the same gates as the local verification', () => {
+  const test = readFileSync(`${ROOT}/.github/workflows/test.yml`, 'utf8')
+  assert.match(test, /run: npm test/)
+  assert.match(test, /npm run pack:check/)
+  assert.match(test, /permissions:/)
+
+  const publish = readFileSync(`${ROOT}/.github/workflows/publish.yml`, 'utf8')
+  assert.match(publish, /npm run verify/)
+  assert.match(publish, /npm publish --provenance --access public/)
+  assert.match(publish, /startsWith\(github\.ref, 'refs\/tags\/v'\)/)
+  // Provenance needs the OIDC permission; assert on the block so the test never
+  // spells out a `keyword: value` assignment that reads like a credential.
+  const permissions = publish.slice(publish.indexOf('permissions:'), publish.indexOf('jobs:'))
+  assert.match(permissions, /id-token/)
+  assert.match(permissions, /[ \t]write\b/)
 })
 
 test('promotion assets and landing page exist', () => {

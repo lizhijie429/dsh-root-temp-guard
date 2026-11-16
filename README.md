@@ -203,8 +203,9 @@ dsh headless --patch <含 root-temp-guard insert 的 yaml> "hello"
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 74 个用例，含真实文件系统 quarantine、Config schema、客户端 bundle、显示元数据与推广资产测试
-npm pack --dry-run              # 校验 npm 包内容（应为 20 个文件：含 cordis.patch.yml 与 locale/，不含 test/、docs/、state/）
+npm test                        # 76 个用例，含真实文件系统 quarantine、Config schema、客户端 bundle、显示元数据、发布门禁与推广资产测试
+npm run pack:check              # 直接问 npm 要真实打包清单：应为 20 个文件，含 cordis.patch.yml 与 locale/，不含 test/、docs/、state/
+npm run verify                  # 上面两步的合集；npm publish 前的 prepublishOnly 会自动执行它
 Get-Content state\root-temp-guard.log
 ```
 
@@ -220,6 +221,22 @@ Get-Content state\root-temp-guard.log
 ```
 
 `mode: warn` 时两层守卫的同一行前缀是 `would-deny`（只记录、不拦截），清扫层对应 `quarantine.would-move`。
+
+## 发布（维护者）
+
+工作区干净时按顺序执行：
+
+```powershell
+npm run verify                                    # 1) 门禁：测试 + 真实打包清单
+npm run market:index                              # 2) 把 docs/index.json 固定到当前 HEAD
+git add docs && git commit -m "chore: refresh market index"
+git tag v<版本> && git push origin main --tags     # 3) 打 tag（必须与 package.json 的 version 一致）
+```
+
+- **`npm run pack:check`**（`scripts/check-pack.mjs`）不重复 `files` 白名单，而是直接问 npm 要真实清单（`npm pack --dry-run --json`），断言三件事：运行时文件齐全（`index.mjs`、`cordis.patch.yml`、`lib/client.js`、两份 locale、图标、vendored schema、README/LICENSE）；开发与本地文件未被打包（`state/`、`docs/`、`test/`、`scripts/`、`.github/`、点文件、`*.log`、`*.tgz`）；`files` 里没有已经匹配不到任何文件的失效条目；
+- **`prepublishOnly`** 已设为 `npm run verify`：`npm publish` 之前测试与打包清单必然通过，不依赖人工记得跑；本地发布时 token 来自 `~/.npmrc`；
+- **CI 发布**：推送 `v*` tag 触发 `.github/workflows/publish.yml`，先校验 tag 与 `package.json` 版本一致，再以 `--provenance --access public` 发布。认证二选一：npmjs.com 上配置 **Trusted Publishing**（推荐，无需密钥），或把 granular token 存成 `NPM_TOKEN` secret 并取消工作流里对应注释；
+- 本仓库**不放** `.npmrc`：它已被 `.gitignore` 忽略，避免发布 token 被提交进公开仓库。
 
 ## 插件市场与社区收录
 

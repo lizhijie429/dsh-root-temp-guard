@@ -3,6 +3,9 @@
   "version": "0.9.1",
   "description": "DSH Host plugin: block tool calls that create temporary directories/files in the workspace root (including the 0.2.2 apply_patch tool), with a graphical settings page. Workspace root follows the session; temp dir name, deny patterns and denial text are configurable.",
   "type": "module",
+  "sideEffects": [
+    "./lib/client.js"
+  ],
   "main": "index.mjs",
   "exports": {
     ".": "./index.mjs",
@@ -23,10 +26,14 @@
     "LICENSE"
   ],
   "engines": {
+    "node": ">=20",
     "dsh": ">=0.2.1-0 <0.3.0"
   },
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
+    "pack:check": "node scripts/check-pack.mjs",
+    "verify": "npm run test && npm run pack:check",
+    "prepublishOnly": "npm run verify",
     "market:index": "node scripts/update-market-index.mjs"
   },
   "icon": "./assets/icon.png",
@@ -54,7 +61,10 @@
     "configuration"
   ],
   "license": "MIT",
-  "author": "lizhijie429",
+  "author": {
+    "name": "lizhijie429",
+    "url": "https://github.com/lizhijie429"
+  },
   "publishConfig": {
     "access": "public"
   },

@@ -1,2 +1,9 @@
 # Normalize text files to LF in the repository; Windows checkouts may still be CRLF.
 * text=auto eol=lf
+
+# Binary assets: never rewrite line endings, never render a text diff.
+*.png binary
+*.tgz binary
+
+# Vendored MIT sources are third-party copies; keep them out of language stats.
+vendor/** linguist-vendored

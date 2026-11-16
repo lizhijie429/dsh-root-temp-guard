@@ -205,8 +205,9 @@ The package ships display metadata that the Plugin Manager and the plugin detail
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 74 cases, including real-filesystem quarantine, Config schema, client bundle, display metadata and promotion-asset tests
-npm pack --dry-run              # validate npm package contents (20 files: includes cordis.patch.yml and locale/, excludes test/, docs/, state/)
+npm test                        # 76 cases, including real-filesystem quarantine, Config schema, client bundle, display metadata, release gate and promotion-asset tests
+npm run pack:check              # ask npm for the real packed list: 20 files, including cordis.patch.yml and locale/, excluding test/, docs/, state/
+npm run verify                  # both of the above; `npm publish` runs it through prepublishOnly
 Get-Content state\root-temp-guard.log
 ```
 
@@ -222,6 +223,22 @@ Example log:
 ```
 
 In `mode: warn` the same lines start with `would-deny` (logged, not blocked); the sweep layer logs `quarantine.would-move` instead.
+
+## Release (maintainers)
+
+With a clean working tree, in this order:
+
+```powershell
+npm run verify                                    # 1) gate: tests + real packed file list
+npm run market:index                              # 2) pin docs/index.json to the current HEAD
+git add docs && git commit -m "chore: refresh market index"
+git tag v<version> && git push origin main --tags  # 3) tag; must equal the package.json version
+```
+
+- **`npm run pack:check`** (`scripts/check-pack.mjs`) does not restate the `files` whitelist; it asks npm for the real list (`npm pack --dry-run --json`) and asserts three things: every runtime file is present (`index.mjs`, `cordis.patch.yml`, `lib/client.js`, both locale files, the icon, the vendored schemastery/cosmokit copies, README/LICENSE); nothing dev-only or repository-local is published (`state/`, `docs/`, `test/`, `scripts/`, `.github/`, dotfiles, `*.log`, `*.tgz`); and no `files` entry has gone stale by matching nothing.
+- **`prepublishOnly`** is `npm run verify`, so `npm publish` cannot ship an untested tarball or a leaked file without anyone remembering to check. Locally the token comes from `~/.npmrc`.
+- **CI publishing**: pushing a `v*` tag runs `.github/workflows/publish.yml`, which first checks that the tag equals the `package.json` version and then publishes with `--provenance --access public`. Authentication is either **Trusted Publishing** on npmjs.com (recommended, no secret) or a granular token in the `NPM_TOKEN` secret with the matching comment in the workflow uncommented.
+- This repository deliberately has **no** `.npmrc`: it is gitignored so a publish token cannot be committed to a public repository.
 
 ## Plugin market and community listings
 

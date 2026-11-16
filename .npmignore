@@ -17,6 +17,8 @@ scripts/
 .github/
 .gitignore
 .gitattributes
+.editorconfig
+.nvmrc
 
 # Runtime state of the guard itself: audit log and its rotated copy, plus the
 # root-level scratch directory the plugin exists to forbid.
