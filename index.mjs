@@ -129,7 +129,9 @@ export function apply(ctx, rawConfig) {
         const { root, cwd } = resolveContext(exec)
         const reason = evaluate(exec, current, { root, cwd })
         if (reason !== undefined) {
-          log(`deny source=tool tool=${forLog(exec?.name)} reason=${forLog(reason)}`)
+          // `warn` allows the call, so the audit line must not claim a denial.
+          const verdict = current.mode === 'warn' ? 'would-deny' : 'deny'
+          log(`${verdict} source=tool tool=${forLog(exec?.name)} reason=${forLog(reason)}`)
           if (current.mode === 'warn') return undefined
         }
         return reason
@@ -211,7 +213,9 @@ export function apply(ctx, rawConfig) {
         return next()
       }
       if (reason !== undefined) {
-        log(`deny source=fs tool=${forLog(actor?.name)} target=${forLog(target?.displayPath)} reason=${forLog(reason)}`)
+        // Same audit wording as the tool guard: `warn` keeps the write alive.
+        const verdict = current.mode === 'warn' ? 'would-deny' : 'deny'
+        log(`${verdict} source=fs tool=${forLog(actor?.name)} target=${forLog(target?.displayPath)} reason=${forLog(reason)}`)
         if (current.mode !== 'warn') throw new Error(reason)
       }
       return next()

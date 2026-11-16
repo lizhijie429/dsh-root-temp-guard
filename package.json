@@ -7,11 +7,14 @@
   "exports": {
     ".": "./index.mjs",
     "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./assets/icon.png",
     "./package.json": "./package.json"
   },
   "files": [
     "index.mjs",
     "lib",
+    "locale/*.json",
     "vendor",
     "assets",
     "cordis.patch.yml",
@@ -26,6 +29,7 @@
     "test": "node --test \"test/*.test.mjs\"",
     "market:index": "node scripts/update-market-index.mjs"
   },
+  "icon": "./assets/icon.png",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

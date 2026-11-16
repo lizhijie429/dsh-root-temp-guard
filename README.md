@@ -12,7 +12,7 @@ DSH Host 插件：在工具调用层拦截"在工作区根目录创建临时目�
 
 ## 版本亮点
 
-- **0.9.1**：插件页「内置插件配置」新增 **根目录临时文件守卫** 卡片；按绝对路径手动插入的桌面 profile 也能打开图形化设置页。
+- **0.9.1**：插件页「内置插件配置」新增 **根目录临时文件守卫** 卡片；按绝对路径手动插入的桌面 profile 也能打开图形化设置页；新增 Plugin Manager 显示元数据（图标 + 中英文标题/描述），并补齐 npm 打包白名单与根 `.npmignore`。
 - **0.9.0**：新增 Host Config schema 与图形化设置页（13 项配置）；保存通过 `.volatile()` 配置实时生效，无需重启。
 - **0.8.0**：并发会话清扫延迟、pending 重试、shell 内联参数、`apply_patch` 解析对齐等工作管线修复。
 
@@ -67,7 +67,7 @@ tools/pre-execute 提前拒绝 → ctx.tools.guard() 单调守卫 → 执行工�
 - 文件类：`write`、`edit`、`str_replace_editor`（`view` 只读命令放行）、`apply_patch`（解析 `*** Add File:` / `*** Update File:` / `*** Move to:` 的路径；`*** Delete File:` 是删除而非创建，放行），参数层 + fs-intent 层；
 - 命令类：`pwsh`、`bash`、`terminal_send`（`command` / `text`；`workdir` 按当前 cwd 解析，"cd/Set-Location 后的相对名"按新目录解析）。
 
-命令类启发式：命令中出现创建动词（`New-Item`/`mkdir`/`touch`/`Set-Content`/`Add-Content`/`Out-File`/`Copy-Item`/`Move-Item`/`xcopy`/`cp`/`mv`/`tee`/`ln`/`>` 重定向），且某个**路径操作数**解析到根目录下的临时名时拒绝；`-Value`/`-Content` 等自由文本参数会被跳过（避免 `Set-Content -Value "console.log"` 之类误报）；`-FilePath:_tmp/a`、`--target-directory=_tmp` 这类"参数内嵌值"也会作为路径检查。
+命令类启发式：命令中出现创建动词（`New-Item`/`mkdir`/`md`/`ni`/`touch`/`Set-Content`/`Add-Content`/`Out-File`/`Tee-Object`/`Copy-Item`/`Move-Item`/`xcopy`/`robocopy`/`cp`/`mv`/`tee`/`install`/`ln`/`>` 重定向），且某个**路径操作数**解析到根目录下的临时名时拒绝；`-Value`/`-Content` 等自由文本参数会被跳过（避免 `Set-Content -Value "console.log"` 之类误报）；`-FilePath:_tmp/a`、`--target-directory=_tmp` 这类"参数内嵌值"也会作为路径检查。
 
 默认拒绝文案（可用 `reasonTemplate` 覆盖）：
 
@@ -86,7 +86,7 @@ tools/pre-execute 提前拒绝 → ctx.tools.guard() 单调守卫 → 执行工�
 | `mode` | `deny` | `deny` 拒绝；`warn` 只记 `would-deny` 日志并放行（灰度上线用） |
 | `tmpDirName` | `tmp` | 统一临时目录名；必须是单个路径段，非法值回退 `tmp` |
 | `allowRootNames` | `[]` | 额外放行的根目录名（在默认规则之上追加） |
-| `denyNamePatterns` | `^(?:\.*_?tmp\|\.*temp\|\.*scratch\|\.*test[-_]?out)(?=$|[._-]\|\d)` | 根目录临时名正则；**整体替换默认值**；`[]` 表示保留默认 |
+| `denyNamePatterns` | `['^(?:\.*_?tmp\|\.*temp\|\.*scratch\|\.*test[-_]?out)(?=$|[._-]\|\d)']` | 根目录临时名正则数组；**整体替换默认值**；`[]` 表示保留默认；非数组值会告警并回退默认 |
 | `denyFileExtensions` | `['.log','.tmp','.bak','.orig','.rej']` | 根目录临时文件扩展名；`[]` 表示关闭扩展名规则 |
 | `extraWriteTools` | `[]` | 额外的"文件路径类"工具名（追加到 `write`/`edit`/`str_replace_editor`） |
 | `extraShellTools` | `[]` | 额外的"命令类"工具名（追加到 `pwsh`/`bash`/`terminal_send`） |
@@ -114,7 +114,7 @@ tools/pre-execute 提前拒绝 → ctx.tools.guard() 单调守卫 → 执行工�
 
 ### 方式一：CLI 安装（web / headless 等 CLI 管理的 profile，推荐）
 
-npm 发布后：
+npm 发布后（<https://www.npmjs.com/package/dsh-root-temp-guard>）：
 
 ```powershell
 dsh plugin --profile web add dsh-root-temp-guard
@@ -190,12 +190,21 @@ dsh headless --patch <含 root-temp-guard insert 的 yaml> "hello"
 
 > 浏览器半侧是手写 bundle（`lib/client.js`，遵循 DSH `__ModuleLoader__` 格式，无需构建步骤）；`dsh.client.platform` 仅声明 `web`，纯 CLI 宿主不会加载它。
 
+## 插件管理器中的显示信息
+
+包内自带显示元数据，Plugin Manager 与插件详情页**无需激活插件**即可读取：
+
+- `package.json` 顶层 `icon` → `assets/icon.png`（同时导出 `./icon`），插件行与详情页显示插件自己的图标；
+- `locale/en.json`、`locale/zh.json` 的 `meta.title` / `meta.description`，按 DSH 界面语言选择中英文标题与描述；字段缺失时回退到包名与 `package.json` 的 `description`；
+- 未声明 `meta.detail`，因此插件详情页按 DSH 约定回退到本 README；
+- 这些元数据只影响界面显示；模型看到的拒绝文案仍由 `reasonTemplate` 决定（默认中文，见上文）。
+
 ## 验证
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 71 个用例，含真实文件系统 quarantine、Config schema、客户端 bundle 与推广资产测试
-npm pack --dry-run              # 校验 npm 包内容（含 cordis.patch.yml）
+node --test "test/*.test.mjs"   # 74 个用例，含真实文件系统 quarantine、Config schema、客户端 bundle、显示元数据与推广资产测试
+npm pack --dry-run              # 校验 npm 包内容（应为 20 个文件：含 cordis.patch.yml 与 locale/，不含 test/、docs/、state/）
 Get-Content state\root-temp-guard.log
 ```
 
@@ -210,6 +219,8 @@ Get-Content state\root-temp-guard.log
 2026-11-03T... plugin.disposed
 ```
 
+`mode: warn` 时两层守卫的同一行前缀是 `would-deny`（只记录、不拦截），清扫层对应 `quarantine.would-move`。
+
 ## 插件市场与社区收录
 
 - **项目主页（GitHub Pages）**：<https://lizhijie429.github.io/dsh-root-temp-guard/> —— 一页了解四层拦截、图形化设置页与两种安装方式
@@ -221,20 +232,21 @@ Get-Content state\root-temp-guard.log
 - **DSH Plugin Hub**：<https://dshpluginhub.ai/zh/plugins/dsh-root-temp-guard>（第三方目录，按 GitHub 仓库自动收录）
 - **DSH Hub**：<https://dsh-hub.cc/plugins/lizhijie429/dsh-root-temp-guard>（第三方目录，按仓库/README 自动同步）
 - **deepseekplugin.org**：已自动收录到社区目录：<https://deepseekplugin.org/plugins/submitted?slug=lizhijie429-2f-dsh-2d-root-2d-temp-2d-guard>；提交入口 <https://deepseekplugin.org/submit>
-- **npm**：发布后可直接 `dsh plugin --profile web add dsh-root-temp-guard`
+- **npm**：<https://www.npmjs.com/package/dsh-root-temp-guard> —— 发布后可直接 `dsh plugin --profile web add dsh-root-temp-guard`
+- **打包白名单**：发行内容由 `package.json` 的 `files` 决定（20 个运行时文件）；根 `.npmignore` 作为后备，一旦 `files` 被移除或放宽即接管打包规则
 
 ## 版本记录
 
 | 版本 | 主要内容 |
 | --- | --- |
-| `0.9.1` | 新增 `plugins.item` 设置卡片，绝对路径手动插入的桌面 profile 也能打开设置页；文档补充双入口说明 |
+| `0.9.1` | 新增 `plugins.item` 设置卡片，绝对路径手动插入的桌面 profile 也能打开设置页；新增 Plugin Manager 显示元数据（顶层 `icon` + `locale/*.json`）；补齐打包白名单与根 `.npmignore`；`mode: warn` 审计文案改为 `would-deny`；`denyNamePatterns` 非数组时告警并回退默认；文档补充双入口与显示元数据说明 |
 | `0.9.0` | Host `Config` schema（根 `.volatile()`）+ Web 图形化设置页；内置 vendored schemastery/cosmokit；实时保存 |
 | `0.8.0` | 并发会话清扫延迟、pending 重试、shell 内联参数、`apply_patch` 解析对齐 |
 | `0.7.0` | 适配 DSH 0.2.2 的 `fs/delete-intent` 等新管线变化 |
 
 ## 已知限制
 
-- **不是安全边界**：命令类是启发式文本匹配，`node -e "fs.mkdirSync(...)"`、`xcopy`/`robocopy`、shell 变量/函数/别名、PowerShell 管道拼接、脚本内部间接建目录均可绕过。
+- **不是安全边界**：命令类是启发式文本匹配，`node -e "fs.mkdirSync(...)"`、shell 变量/函数/别名、PowerShell 管道拼接、脚本内部间接建目录均可绕过；上文列出的创建动词（含 `xcopy`/`robocopy`）只匹配字面命令文本，改用变量或间接调用即失效。
 - **命令类只跟踪简单 `cd`/`Set-Location`**：`pushd` 栈、变量展开（`$DIR`、`%TEMP%`、`~`）按"未知目标 → 回到根目录基准"处理（deny-biased，可能误伤）；管道子命令里的 cd 不跟踪。
 - **符号链接 / junction**：文件类工具的写盘走 fs-intent 层，用 realpath 身份判定，`tmp/link` 藏根目录临时项会被拒绝；但**命令类**（shell 文本）仍按字面判定，无法感知 junction。普通 UNC 路径（`\\server\share`）被视为工作区外，不干预。
 - **fs-intent 层只覆盖写/编辑类 intent**：`fs/write-intent`、`fs/edit-intent` 覆盖 `write`/`edit`/`str_replace_editor`/`apply_patch`；0.2.2 新增的 `fs/delete-intent` 与 `fs/observed` 不在本插件监听范围（删除不是创建，观测不是变更）。其它插件直接调用 `ctx.fs` 服务（不触发 intent）不在覆盖范围。

@@ -1,5 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { apply } from '../index.mjs'
 
@@ -113,8 +115,9 @@ test('fs-intent listeners are registered and veto resolved temp targets', () => 
 })
 
 test('warn mode logs would-deny but allows both layers', () => {
+  const logFile = path.join(tmpdir(), `root-temp-guard-warn-${process.pid}-${Date.now()}.log`)
   let nextCalled = false
-  const { guard, listeners } = mount({ config: { mode: 'warn' } })
+  const { guard, listeners } = mount({ config: { mode: 'warn', logFile } })
   assert.equal(guard(exec('write', { file_path: '_tmp_x/a.txt' })), undefined)
   const value = listeners['fs/write-intent'][0](
     { displayPath: path.join(ROOT, '_tmp_x', 'a.txt'), targetKey: path.join(ROOT, '_tmp_x', 'a.txt') },
@@ -126,6 +129,24 @@ test('warn mode logs would-deny but allows both layers', () => {
   )
   assert.equal(value, 'ok')
   assert.equal(nextCalled, true)
+
+  // The audit line must not claim a denial for a call that was allowed.
+  const logged = readFileSync(logFile, 'utf8')
+  assert.match(logged, /would-deny source=tool/)
+  assert.match(logged, /would-deny source=fs/)
+  assert.equal(/\bdeny source=/.test(logged.replace(/would-deny/g, '')), false)
+  rmSync(logFile, { force: true })
+})
+
+test('deny mode logs a plain deny for the same call', () => {
+  const logFile = path.join(tmpdir(), `root-temp-guard-deny-${process.pid}-${Date.now()}.log`)
+  const { guard } = mount({ config: { logFile } })
+  assert.match(guard(exec('write', { file_path: '_tmp_x/a.txt' })), /_tmp_x/)
+
+  const logged = readFileSync(logFile, 'utf8')
+  assert.match(logged, /deny source=tool/)
+  assert.equal(logged.includes('would-deny'), false)
+  rmSync(logFile, { force: true })
 })
 
 test('quarantine watcher subscribes to session/event; quarantine:off is checked live', () => {

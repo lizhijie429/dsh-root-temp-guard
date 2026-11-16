@@ -1,0 +1,55 @@
+# npm publish ignore list for dsh-root-temp-guard.
+#
+# How this file interacts with packaging:
+#   * package.json declares a `files` whitelist, and npm applies a root-level
+#     `.npmignore` ONLY when `files` is absent. With `files` in place this file
+#     is a second line of defense: it takes over the moment someone removes or
+#     loosens `files`, and `.npmignore` files in subdirectories are always read.
+#   * When a root `.npmignore` exists, npm uses it INSTEAD of `.gitignore` for
+#     packing. This list therefore repeats every `.gitignore` rule: keep the two
+#     files in sync, or a rule dropped here silently becomes publishable.
+#   * Verify what actually ships with:  npm pack --dry-run
+#
+# Never publish: dev/test sources, the GitHub Pages site, CI and tooling.
+test/
+docs/
+scripts/
+.github/
+.gitignore
+.gitattributes
+
+# Runtime state of the guard itself: audit log and its rotated copy, plus the
+# root-level scratch directory the plugin exists to forbid.
+state/
+tmp/
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Pack / publish artifacts.
+*.tgz
+*.tar.gz
+
+# Local tool state (e.g. the push privacy guard's per-project whitelist) and
+# credentials: `npm publish` auth tokens live in .npmrc, never ship them.
+.dsh/
+.npmrc
+.env
+.env.*
+
+# Editors.
+.vscode/
+.idea/
+*.swp
+
+# OS cruft (Windows/macOS).
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Test coverage output.
+coverage/
+
+# Dependencies.
+node_modules/

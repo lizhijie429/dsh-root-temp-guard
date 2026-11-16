@@ -20,6 +20,8 @@ const TEXT_FILES = [
   'lib/config.mjs',
   'lib/client.js',
   'vendor/README.md',
+  'locale/en.json',
+  'locale/zh.json',
   'docs/index.json',
   'docs/index.html',
   'scripts/update-market-index.mjs',
@@ -74,6 +76,23 @@ test('manifest declares the browser half for the graphical settings page', () =>
   assert.equal(pkg.files.includes('lib/client.js'), false) // covered by "lib"
   assert.equal(readFileSync(`${ROOT}/lib/client.js`, 'utf8').includes('__ModuleLoader__'), true)
   assert.equal(readFileSync(`${ROOT}/lib/config.mjs`, 'utf8').includes('volatile()'), true)
+})
+
+test('manifest exposes the display metadata the Plugin Manager reads', () => {
+  const pkg = JSON.parse(readFileSync(`${ROOT}/package.json`, 'utf8'))
+  // A package-root plugin may declare `icon` at the top level; it wins over ./icon.
+  assert.equal(pkg.icon, './assets/icon.png')
+  assert.equal(pkg.exports?.['./icon'], './assets/icon.png')
+  assert.equal(readFileSync(`${ROOT}/assets/icon.png`).length < 256 * 1024, true)
+  assert.equal(pkg.files.includes('assets'), true)
+  // Locale metadata is read without activating the bundle, so both files must ship.
+  assert.equal(pkg.exports?.['./locale/*.json'], './locale/*.json')
+  assert.equal(pkg.files.includes('locale/*.json'), true)
+  for (const locale of ['en', 'zh']) {
+    const meta = JSON.parse(readFileSync(`${ROOT}/locale/${locale}.json`, 'utf8')).meta
+    assert.equal(typeof meta?.title === 'string' && meta.title.length > 0, true, `${locale} meta.title`)
+    assert.equal(typeof meta?.description === 'string' && meta.description.length > 0, true, `${locale} meta.description`)
+  }
 })
 
 test('promotion assets and landing page exist', () => {

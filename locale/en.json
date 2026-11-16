@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Root temp guard",
+    "description": "Blocks tool calls that create temporary files or directories in the workspace root, and moves new root-level temp entries into tmp/_quarantine at turn end. The settings page saves live, with no restart."
+  }
+}

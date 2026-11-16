@@ -1,3 +1,40 @@
+# Dependencies (the plugin itself has none; kept for local tooling)
 node_modules/
+
+# Runtime state written by the guard plugin itself: audit log and its rotated copy
 state/
 *.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# npm pack / publish artifacts (`npm pack` writes *.tgz into the repository root)
+*.tgz
+*.tar.gz
+
+# Root-level scratch directory this plugin exists to enforce: temp artifacts
+# belong in <tmpDir>/ (see cordis.patch.yml and README), never in the root.
+/tmp/
+
+# Local tool state, e.g. the push privacy guard's per-project whitelist
+# (`.dsh/privacy-guard-whitelist.json` in this repository).
+.dsh/
+
+# Local credentials — never commit. `npm publish` auth tokens are stored in
+# .npmrc, so ignore it here to keep them out of the public repository.
+.npmrc
+.env
+.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# OS cruft (Windows/macOS)
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Test coverage output
+coverage/

@@ -43,11 +43,11 @@
       "versions": [
         {
           "version": "0.9.1",
-          "publishTimestamp": 1793969298,
+          "publishTimestamp": 1793969750,
           "source": {
             "type": "git",
             "url": "https://github.com/lizhijie429/dsh-root-temp-guard",
-            "commit": "cdfece6c80ce8be9d702ab227a3766106f4eab3d"
+            "commit": "43acbd5d9603f4257b60dc65a827db2bb808e8fd"
           },
           "engines": {
             "dsh": ">=0.2.1-0 <0.3.0"

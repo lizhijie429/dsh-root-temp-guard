@@ -162,6 +162,14 @@ test('config warnings are reported instead of silently disabling rules', () => {
   assert.equal(cfg.warnings.length >= 3, true)
 })
 
+test('denyNamePatterns must be an array; a bare regex warns and falls back to the defaults', () => {
+  const cfg = normalizeConfig({ denyNamePatterns: '^(?:_?tmp)$' }, PLUGIN_DIR)
+  assert.equal(cfg.warnings.some(warning => warning.includes('denyNamePatterns')), true)
+  // The unusable value is ignored, so the default name rule still denies.
+  assert.match(evaluate(exec('write', { file_path: '_tmp_x/a.txt' }), cfg, { root: ROOT, cwd: ROOT }), /_tmp_x/)
+  assert.equal(normalizeConfig({ denyNamePatterns: ['^custom$'] }, PLUGIN_DIR).warnings.length, 0)
+})
+
 test('quarantine config is validated and defaults to strict', () => {
   const cfg = normalizeConfig({ quarantine: 'yes' }, PLUGIN_DIR)
   assert.equal(cfg.quarantine, 'strict')

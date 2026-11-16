@@ -12,7 +12,7 @@ A DSH host plugin that intercepts tool calls creating temporary directories/file
 
 ## What's new
 
-- **0.9.1**: a **Root temp guard** card under Plugins → "Built-in plugin configuration"; desktop profiles that insert the plugin by absolute path get the settings page too.
+- **0.9.1**: a **Root temp guard** card under Plugins → "Built-in plugin configuration"; desktop profiles that insert the plugin by absolute path get the settings page too; Plugin Manager display metadata (icon plus English/Chinese title and description); an npm publish whitelist and a root `.npmignore`.
 - **0.9.0**: Host Config schema plus a 13-field graphical settings page; saves apply live through the root-`.volatile()` schema, no restart.
 - **0.8.0**: concurrent-turn quarantine deferral, pending retries, shell inline operands, and `apply_patch` parser parity.
 
@@ -67,13 +67,15 @@ Covered tools:
 - File tools: `write`, `edit`, `str_replace_editor` (the read-only `view` command is allowed), `apply_patch` (paths from `*** Add File:`, `*** Update File:` and `*** Move to:` are checked; `*** Delete File:` is a deletion, not a creation, and stays allowed) — argument layer + fs-intent layer.
 - Shell tools: `pwsh`, `bash`, `terminal_send` (`command` / `text`; `workdir` is resolved against the current cwd, and relative names after `cd`/`Set-Location` use the new directory).
 
-Shell heuristic: when the command contains a creation verb (`New-Item`/`mkdir`/`touch`/`Set-Content`/`Add-Content`/`Out-File`/`Copy-Item`/`Move-Item`/`xcopy`/`cp`/`mv`/`tee`/`ln`/`>` redirection) and one of its **path operands** resolves to a root-level temp name, the call is denied. Free-text arguments such as `-Value`/`-Content` are skipped to avoid false positives like `Set-Content -Value "console.log"`; inline operands such as `-FilePath:_tmp/a` and `--target-directory=_tmp` are inspected as paths too.
+Shell heuristic: when the command contains a creation verb (`New-Item`/`mkdir`/`md`/`ni`/`touch`/`Set-Content`/`Add-Content`/`Out-File`/`Tee-Object`/`Copy-Item`/`Move-Item`/`xcopy`/`robocopy`/`cp`/`mv`/`tee`/`install`/`ln`/`>` redirection) and one of its **path operands** resolves to a root-level temp name, the call is denied. Free-text arguments such as `-Value`/`-Content` are skipped to avoid false positives like `Set-Content -Value "console.log"`; inline operands such as `-FilePath:_tmp/a` and `--target-directory=_tmp` are inspected as paths too.
 
-Default denial text (overridable with `reasonTemplate`):
+Default denial text (overridable with `reasonTemplate`). The built-in default below is Chinese: the
+plugin ships no per-locale copy, and the denial text is part of the configuration, not of the
+browser locale. To hand an English denial to the model, set `reasonTemplate`, for example
+`'Write temporary artifacts under {tmpDir}/<task-name>/ instead of the repository root: {name}'`.
 
 ```text
-Refusing to create temporary entry "_tmp_probe" in the repository root. Write temporary artifacts under
-tmp/<task-name>/ instead (see the project convention file, e.g. AGENTS.md).
+禁止在仓库根目录创建临时项 "_tmp_probe"。临时产物请写入 tmp/<任务名>/ 下；具体约定见项目约定文件（如 AGENTS.md）中的临时文件规则。
 ```
 
 ## Configuration
@@ -86,7 +88,7 @@ The `config:` block is entirely optional:
 | `mode` | `deny` | `deny` rejects; `warn` only logs `would-deny` and allows (staged rollout) |
 | `tmpDirName` | `tmp` | Unified temp directory name; must be a single path segment, invalid values fall back to `tmp` |
 | `allowRootNames` | `[]` | Extra allowed root-level names (appended on top of the defaults) |
-| `denyNamePatterns` | `^(?:\.*_?tmp\|\.*temp\|\.*scratch\|\.*test[-_]?out)(?=$|[._-]\|\d)` | Root-level temp-name regex; **replaces the defaults**; `[]` keeps the defaults |
+| `denyNamePatterns` | `['^(?:\.*_?tmp\|\.*temp\|\.*scratch\|\.*test[-_]?out)(?=$|[._-]\|\d)']` | Array of root-level temp-name regexes; **replaces the defaults**; `[]` keeps the defaults; a non-array value warns and falls back |
 | `denyFileExtensions` | `['.log','.tmp','.bak','.orig','.rej']` | Root-level temp-file extensions; `[]` disables the extension rule |
 | `extraWriteTools` | `[]` | Extra "file-path" tool names (added to `write`/`edit`/`str_replace_editor`) |
 | `extraShellTools` | `[]` | Extra "shell" tool names (added to `pwsh`/`bash`/`terminal_send`) |
@@ -114,7 +116,7 @@ The plugin is a DSH **profile bundle**: `package.json` declares `dsh.bundle.patc
 
 ### Option 1 — CLI install (CLI-managed profiles such as web/headless; recommended)
 
-After the npm release:
+After the npm release (<https://www.npmjs.com/package/dsh-root-temp-guard>):
 
 ```powershell
 dsh plugin --profile web add dsh-root-temp-guard
@@ -190,12 +192,21 @@ The desktop app's embedded Web UI works the same way.
 
 > The browser half is a hand-written bundle (`lib/client.js`, DSH `__ModuleLoader__` format, no build step); `dsh.client.platform` is `web` only, so pure CLI hosts never load it.
 
+## Display metadata in the Plugin Manager
+
+The package ships display metadata that the Plugin Manager and the plugin details page read **without activating the bundle**:
+
+- the top-level `icon` in `package.json` → `assets/icon.png` (the `./icon` export points at the same file), so plugin rows and the details page show the plugin's own icon;
+- `meta.title` / `meta.description` in `locale/en.json` and `locale/zh.json`, chosen by the DSH interface language; missing fields fall back to the package name and the `package.json` description;
+- no `meta.detail` is declared, so the details page falls back to this README, as DSH documents;
+- this metadata affects the interface only. The denial text the model sees still comes from `reasonTemplate` (Chinese by default, see above).
+
 ## Verify
 
 ```powershell
 cd "$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"
-node --test "test/*.test.mjs"   # 71 cases, including real-filesystem quarantine, Config schema, client-bundle and promotion-asset tests
-npm pack --dry-run              # validate npm package contents (includes cordis.patch.yml)
+node --test "test/*.test.mjs"   # 74 cases, including real-filesystem quarantine, Config schema, client bundle, display metadata and promotion-asset tests
+npm pack --dry-run              # validate npm package contents (20 files: includes cordis.patch.yml and locale/, excludes test/, docs/, state/)
 Get-Content state\root-temp-guard.log
 ```
 
@@ -210,6 +221,8 @@ Example log:
 2026-11-03T... plugin.disposed
 ```
 
+In `mode: warn` the same lines start with `would-deny` (logged, not blocked); the sweep layer logs `quarantine.would-move` instead.
+
 ## Plugin market and community listings
 
 - **Project page (GitHub Pages)**: <https://lizhijie429.github.io/dsh-root-temp-guard/> — the four layers, the graphical settings page, and both installation modes on one page
@@ -221,20 +234,21 @@ Example log:
 - **DSH Plugin Hub**: <https://dshpluginhub.ai/zh/plugins/dsh-root-temp-guard> (third-party directory, auto-listed from GitHub)
 - **DSH Hub**: <https://dsh-hub.cc/plugins/lizhijie429/dsh-root-temp-guard> (third-party directory, synced from the repo/README)
 - **deepseekplugin.org**: auto-listed in the community directory at <https://deepseekplugin.org/plugins/submitted?slug=lizhijie429-2f-dsh-2d-root-2d-temp-2d-guard>; submission form: <https://deepseekplugin.org/submit>
-- **npm**: once published, `dsh plugin --profile web add dsh-root-temp-guard` works directly.
+- **npm**: <https://www.npmjs.com/package/dsh-root-temp-guard> — once published, `dsh plugin --profile web add dsh-root-temp-guard` works directly.
+- **Publish whitelist**: `files` in `package.json` decides what ships (20 runtime files); the root `.npmignore` is the backstop and takes over if `files` is removed or loosened.
 
 ## Changelog
 
 | Version | Highlights |
 | --- | --- |
-| `0.9.1` | `plugins.item` settings card so absolute-path desktop profiles get the page; docs cover both entry points |
+| `0.9.1` | `plugins.item` settings card so absolute-path desktop profiles get the page; Plugin Manager display metadata (top-level `icon` + `locale/*.json`); publish whitelist and root `.npmignore`; `mode: warn` audit lines now read `would-deny`; `denyNamePatterns` warns and falls back when it is not an array; docs cover both entry points and the display metadata |
 | `0.9.0` | Host `Config` schema (root `.volatile()`) + Web graphical settings page; vendored schemastery/cosmokit; live saves |
 | `0.8.0` | Concurrent-turn quarantine deferral, pending retries, shell inline operands, `apply_patch` parser parity |
 | `0.7.0` | Adapted to DSH 0.2.2 pipeline changes (`fs/delete-intent`, etc.) |
 
 ## Known limitations
 
-- **Not a security boundary**: shell checks are heuristic text matching; `node -e "fs.mkdirSync(...)"`, `xcopy`/`robocopy`, shell variables/functions/aliases, PowerShell pipeline composition and scripts that create directories indirectly can bypass it.
+- **Not a security boundary**: shell checks are heuristic text matching; `node -e "fs.mkdirSync(...)"`, shell variables/functions/aliases, PowerShell pipeline composition and scripts that create directories indirectly can bypass it. The creation verbs listed above (including `xcopy`/`robocopy`) match literal command text only, so a variable or an indirect call defeats them.
 - **Shell checks only track simple `cd`/`Set-Location`**: `pushd` stacks and variable expansion (`$DIR`, `%TEMP%`, `~`) fall back to the workspace-root base (deny-biased, may cause false positives); `cd` inside pipeline subcommands is not tracked.
 - **Symlinks / junctions**: file-tool writes go through the fs-intent layer and are judged by realpath identity, so a root temp entry hidden behind `tmp/link` is denied; **shell text** is still matched literally and cannot see junctions. Plain UNC paths (`\\server\share`) are treated as outside the workspace and left alone.
 - **The fs-intent layer only covers write/edit intents**: `fs/write-intent` and `fs/edit-intent` cover `write`/`edit`/`str_replace_editor`/`apply_patch`; the 0.2.2 `fs/delete-intent` and `fs/observed` events are not observed here (deletion is not creation, observation is not mutation). Other plugins calling the `ctx.fs` service directly (no intent event) are not covered.

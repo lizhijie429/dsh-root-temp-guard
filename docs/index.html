@@ -156,6 +156,7 @@
     </div>
     <div class="quick">
       <code>dsh plugin --profile web add dsh-root-temp-guard</code>
+      <span class="pill warn"><span class="zh">npm 发布后可用</span><span class="en">after the npm release</span></span>
       <span class="pill ok"><span class="zh">MIT</span><span class="en">MIT</span></span>
     </div>
   </section>
@@ -206,9 +207,9 @@ tools/pre-execute <span class="dim">→</span> ctx.tools.guard() <span class="di
     <div class="steps">
       <div class="card">
         <h3><span class="zh">CLI profile（组合包）</span><span class="en">CLI profile (bundle)</span></h3>
-        <p><span class="zh">web / headless 等由 CLI 管理的 profile，安装后自动插入 <code>root-temp-guard</code> 行。</span><span class="en">For web/headless profiles managed by the CLI; installation inserts the <code>root-temp-guard</code> row automatically.</span></p>
+        <p><span class="zh">web / headless 等由 CLI 管理的 profile，安装后自动插入 <code>root-temp-guard</code> 行。<strong>按包名安装需要在 npm 发布之后</strong>，发布前请使用下面的本地目录方式。</span><span class="en">For web/headless profiles managed by the CLI; installation inserts the <code>root-temp-guard</code> row automatically. <strong>Installing by package name requires the npm release</strong>; before that, use the local directory form below.</span></p>
         <pre>dsh plugin --profile web add dsh-root-temp-guard</pre>
-        <p style="margin-top:10px"><span class="zh">本地目录安装：</span><span class="en">From a local directory:</span></p>
+        <p style="margin-top:10px"><span class="zh">发布前：本地目录安装</span><span class="en">Before the release: from a local directory</span></p>
         <pre>dsh plugin --profile web add "file:$env:USERPROFILE\.dsh\plugins\dsh-root-temp-guard"</pre>
       </div>
       <div class="card">
@@ -228,6 +229,7 @@ tools/pre-execute <span class="dim">→</span> ctx.tools.guard() <span class="di
     <h2><span class="zh">市场与社区</span><span class="en">Market &amp; community</span></h2>
     <div class="linklist">
       <a href="https://lizhijie429.github.io/dsh-root-temp-guard/index.json"><span class="zh">DSH 插件市场索引</span><span class="en">DSH market index</span><span>index.json ↗</span></a>
+      <a href="https://www.npmjs.com/package/dsh-root-temp-guard"><span class="zh">npm 包</span><span class="en">npm package</span><span>npm ↗</span></a>
       <a href="https://github.com/lizhijie429/dsh-root-temp-guard"><span class="zh">GitHub 仓库</span><span class="en">GitHub repository</span><span>lizhijie429 ↗</span></a>
       <a href="https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11726"><span class="zh">awesome-dsh-plugin 条目</span><span class="en">awesome-dsh-plugin entry</span><span>merged ↗</span></a>
       <a href="https://dshpluginhub.ai/zh/plugins/dsh-root-temp-guard"><span class="zh">DSH Plugin Hub</span><span class="en">DSH Plugin Hub</span><span>↗</span></a>
